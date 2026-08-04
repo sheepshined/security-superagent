@@ -13,6 +13,13 @@ npm.cmd run build
 npm.cmd run e2e
 ```
 
+管理员配置完成且 Docker 后端启动后，可执行真实会话边界验收；脚本仅从进程环境
+读取凭据，不输出账号或密码：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\check_auth_flow.py
+```
+
 真实 DeepSeek 主演示连续运行（只使用 SUP-001 合成数据）：
 
 ```powershell
