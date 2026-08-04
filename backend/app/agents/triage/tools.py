@@ -36,8 +36,7 @@ def create_knowledge_search_tool(retriever: HybridRetriever) -> StructuredTool:
         func=search_security_knowledge,
         name="search_security_knowledge",
         description=(
-            "检索经过访问标签过滤的安全知识库，返回可引用的文档片段；"
-            "本工具只读，不执行安全处置。"
+            "检索经过访问标签过滤的安全知识库，返回可引用的文档片段；本工具只读，不执行安全处置。"
         ),
         args_schema=KnowledgeSearchInput,
     )

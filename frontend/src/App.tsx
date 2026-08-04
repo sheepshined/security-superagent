@@ -6,8 +6,10 @@ import {
   DatabaseOutlined,
   ExperimentOutlined,
   LinkOutlined,
+  LogoutOutlined,
   PlayCircleFilled,
-  SafetyCertificateOutlined
+  SafetyCertificateOutlined,
+  UserOutlined
 } from "@ant-design/icons";
 import {
   Alert,
@@ -18,6 +20,8 @@ import {
   Drawer,
   Empty,
   Flex,
+  Form,
+  Input,
   List,
   Progress,
   Row,
@@ -36,13 +40,20 @@ import type {ColumnsType} from "antd/es/table";
 import {useEffect, useMemo, useState} from "react";
 
 import {
+  ApiError,
+  getMe,
   getReadiness,
   getTraceReplay,
   listScenarios,
+  login,
+  logout,
+  streamJob,
   submitTriage,
-  waitForTriageResult
+  getTriageResult
 } from "./api";
 import type {
+  AuthUser,
+  JobEvent,
   RuntimeReadiness,
   ScenarioSummary,
   TraceReplay,
@@ -70,33 +81,114 @@ function severityTag(severity: ScenarioSummary["severity"]) {
   return <Tag color={colors[severity]}>{severity.toUpperCase()}</Tag>;
 }
 
+function workflowStep(node: string): number {
+  if (node.includes("load") || node === "queued") return 0;
+  if (node.includes("plan_investigation")) return 1;
+  if (
+    node.includes("execute") ||
+    node.includes("retrieve") ||
+    node.includes("structured")
+  ) {
+    return 2;
+  }
+  if (node.includes("critic")) return 3;
+  if (node.includes("replan") || node.includes("react")) return 4;
+  if (node.includes("policy")) return 5;
+  if (node.includes("completed")) return 6;
+  return 0;
+}
+
 export default function App() {
   const [scenarios, setScenarios] = useState<ScenarioSummary[]>([]);
+  const [user, setUser] = useState<AuthUser>();
+  const [authLoading, setAuthLoading] = useState(true);
   const [runtime, setRuntime] = useState<RuntimeReadiness>();
   const [loading, setLoading] = useState(true);
   const [runningId, setRunningId] = useState<string>();
   const [result, setResult] = useState<TriageResult>();
   const [traceReplay, setTraceReplay] = useState<TraceReplay>();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [jobProgress, setJobProgress] = useState(0);
+  const [currentNode, setCurrentNode] = useState<string>();
+  const [jobEvents, setJobEvents] = useState<JobEvent[]>([]);
   const [api, contextHolder] = message.useMessage();
 
   useEffect(() => {
-    Promise.all([listScenarios(), getReadiness()])
-      .then(([scenarioItems, readiness]) => {
+    getMe()
+      .then((currentUser) => {
+        setUser(currentUser);
+        return Promise.all([listScenarios(), getReadiness()]);
+      })
+      .then((values) => {
+        if (!values) return;
+        const [scenarioItems, readiness] = values;
         setScenarios(scenarioItems);
         setRuntime(readiness);
       })
-      .catch(() => api.error("无法连接后端，请先启动 FastAPI 服务。"))
-      .finally(() => setLoading(false));
+      .catch((error: unknown) => {
+        if (!(error instanceof ApiError) || error.status !== 401) {
+          api.error("无法连接后端，请检查服务状态。");
+        }
+      })
+      .finally(() => {
+        setAuthLoading(false);
+        setLoading(false);
+      });
   }, [api]);
+
+  const loadConsole = async (currentUser: AuthUser) => {
+    setUser(currentUser);
+    setLoading(true);
+    const [scenarioItems, readiness] = await Promise.all([
+      listScenarios(),
+      getReadiness()
+    ]);
+    setScenarios(scenarioItems);
+    setRuntime(readiness);
+    setLoading(false);
+  };
+
+  const handleLogin = async (values: {username: string; password: string}) => {
+    setAuthLoading(true);
+    try {
+      await loadConsole(await login(values.username, values.password));
+      api.success("登录成功");
+    } catch {
+      api.error("登录失败，请检查账号和密码。");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    setUser(undefined);
+    setScenarios([]);
+    setResult(undefined);
+  };
 
   const runScenario = async (scenario: ScenarioSummary) => {
     setRunningId(scenario.scenario_id);
     setResult(undefined);
     setTraceReplay(undefined);
+    setJobEvents([]);
+    setJobProgress(0);
+    setCurrentNode("queued");
     try {
       const job = await submitTriage(scenarioExternalIds[scenario.scenario_id]);
-      const triage = await waitForTriageResult(job.job_id);
+      let terminalStatus = "";
+      await streamJob(job.job_id, (event) => {
+        terminalStatus = event.status;
+        setJobEvents((current) => [...current.slice(-49), event]);
+        setCurrentNode(event.current_node ?? undefined);
+        const progress = event.data.progress;
+        if (typeof progress === "number") setJobProgress(progress);
+        if (["SUCCEEDED", "DEGRADED", "FAILED"].includes(event.status)) {
+          setJobProgress(100);
+        }
+      });
+      if (terminalStatus === "FAILED") throw new Error("任务执行失败");
+      const triage = await getTriageResult(job.job_id);
       const replay = await getTraceReplay(job.trace_id);
       setResult(triage);
       setTraceReplay(replay);
@@ -155,6 +247,53 @@ export default function App() {
     [runningId]
   );
 
+  if (authLoading) {
+    return (
+      <div className="login-shell">
+        <Spin size="large" tip="正在验证本地会话…" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="login-shell">
+        {contextHolder}
+        <Card className="login-card">
+          <Space direction="vertical" size={18} style={{width: "100%"}}>
+            <div className="brand-mark login-brand">
+              <SafetyCertificateOutlined />
+            </div>
+            <div>
+              <Title level={2}>Security SuperAgent</Title>
+              <Text type="secondary">登录本地安全运营控制台</Text>
+            </div>
+            <Form layout="vertical" onFinish={(values) => void handleLogin(values)}>
+              <Form.Item
+                name="username"
+                label="账号"
+                rules={[{required: true, message: "请输入账号"}]}
+              >
+                <Input prefix={<UserOutlined />} autoComplete="username" />
+              </Form.Item>
+              <Form.Item
+                name="password"
+                label="密码"
+                rules={[{required: true, message: "请输入密码"}]}
+              >
+                <Input.Password autoComplete="current-password" />
+              </Form.Item>
+              <Button type="primary" htmlType="submit" block size="large">
+                登录
+              </Button>
+            </Form>
+            <Text type="secondary">会话有效期 8 小时，所有写操作均进行 CSRF 校验。</Text>
+          </Space>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       {contextHolder}
@@ -178,6 +317,12 @@ export default function App() {
             text={`模型：${runtime?.dependencies.model ?? "检测中"}`}
           />
           <Segmented options={["运营总览", "场景编排", "知识中心"]} />
+          <Tag icon={<UserOutlined />} color="blue">
+            {user.username} · {user.role}
+          </Tag>
+          <Button icon={<LogoutOutlined />} onClick={() => void handleLogout()}>
+            退出
+          </Button>
         </Space>
       </header>
 
@@ -197,6 +342,21 @@ export default function App() {
             </Button>
           </Space>
         </section>
+
+        {runningId && (
+          <Card className="live-progress" size="small">
+            <Flex justify="space-between" align="center" gap={16}>
+              <div>
+                <Text strong>实时研判进度</Text>
+                <br />
+                <Text type="secondary">
+                  当前节点：{currentNode ?? "等待 Worker"} · 已接收 {jobEvents.length} 个审计事件
+                </Text>
+              </div>
+              <Progress percent={jobProgress} style={{maxWidth: 420}} />
+            </Flex>
+          </Card>
+        )}
 
         <Row gutter={[16, 16]}>
           <Col xs={24} md={12} xl={6}>
@@ -262,7 +422,7 @@ export default function App() {
             <Card title="研判工作流" extra={<Switch defaultChecked checkedChildren="启用" />}>
               <Steps
                 direction="vertical"
-                current={-1}
+                current={currentNode ? workflowStep(currentNode) : -1}
                 items={[
                   {title: "告警接入与标准化", description: "签名、去重、字段映射"},
                   {title: "Plan 调查规划", description: "网络、端点、身份、知识任务"},

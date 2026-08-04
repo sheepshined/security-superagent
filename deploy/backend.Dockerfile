@@ -9,7 +9,7 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY backend/app/__init__.py ./backend/app/__init__.py
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --default-timeout=300 --retries 10 .
+    pip install --default-timeout=300 --retries 10 ".[ai]"
 COPY backend ./backend
 COPY knowledge ./knowledge
 

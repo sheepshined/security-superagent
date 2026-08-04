@@ -16,6 +16,13 @@ class JobStatus(StrEnum):
     REJECTED = "REJECTED"
     EXPIRED = "EXPIRED"
     CANCELLED = "CANCELLED"
+    DEGRADED = "DEGRADED"
+
+
+class ModelHealth(StrEnum):
+    HEALTHY = "HEALTHY"
+    DEGRADED = "DEGRADED"
+    NOT_CONFIGURED = "NOT_CONFIGURED"
 
 
 class Verdict(StrEnum):
@@ -43,3 +50,9 @@ class ToolRisk(StrEnum):
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
+
+
+class UserRole(StrEnum):
+    ADMIN = "admin"
+    ANALYST = "analyst"
+    APPROVER = "approver"

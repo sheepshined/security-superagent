@@ -11,7 +11,12 @@
 
 ## 当前里程碑
 
-P0：领域契约、Mock 场景、最小 API 与前端控制台骨架。
+- P1 工程基线：SQLite 版本迁移、本地 RBAC、显式幂等键、异步 Worker、SSE、
+  真实 Plan-Execute-Replan 和模型故障安全降级已经实现。
+- P2 知识库：MITRE ATT&CK、CWE Top 25、CISA KEV、Sigma 与中国官方法规来源
+  已登记；支持下载校验、解析、分块去重、BM25 + ONNX 向量 + RRF、Chroma
+  代际索引和原子切换。离线快照始终作为安全回退。
+- 当前继续实施受控响应、模板化工作流、标准 SuperAgent、MCP 和 Skill。
 
 详细计划见 [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md)。
 开发机、Docker E 盘规划和平台边界见 [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md)。
@@ -44,3 +49,14 @@ scripts/       Windows 本地开发脚本
 ```
 
 该检查只发送合成测试文本，不会读取或发送 XDR 数据。
+
+## 知识索引
+
+完整索引使用独立 Compose profile 构建，不占用主演示后端的构建窗口：
+
+```powershell
+docker compose -f deploy/compose.yaml --profile indexer run --rm knowledge-indexer
+```
+
+索引器先在新代际目录完成下载校验、解析和 Chroma 构建，成功后才原子切换
+`ACTIVE` 指针。任何失败代际都不会替换当前可用索引。

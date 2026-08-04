@@ -68,8 +68,4 @@ class ApprovalGraphRunner:
 
     @staticmethod
     def _record_decision(state: ApprovalState) -> dict[str, Any]:
-        return {
-            "status": (
-                "approved" if state["decision"].get("approved") is True else "rejected"
-            )
-        }
+        return {"status": ("approved" if state["decision"].get("approved") is True else "rejected")}

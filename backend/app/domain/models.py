@@ -6,9 +6,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.domain.enums import (
     FactType,
     JobStatus,
+    ModelHealth,
     RunMode,
     Severity,
     ToolRisk,
+    UserRole,
     Verdict,
 )
 
@@ -33,6 +35,7 @@ class TriageOptions(StrictModel):
     time_window_minutes: int = Field(default=60, ge=5, le=1440)
     allow_superagent_escalation: bool = True
     max_risk_level: Severity = Severity.HIGH
+    workflow_version_id: str | None = Field(default=None, max_length=128)
 
 
 class TriageJobRequest(StrictModel):
@@ -140,6 +143,27 @@ class InvestigationPlan(StrictModel):
     max_tool_calls: int = Field(default=6, ge=1, le=12)
 
 
+class PlanStepExecution(StrictModel):
+    step_id: OpaqueId
+    agent: str = Field(min_length=1, max_length=128)
+    tool_name: str = Field(min_length=1, max_length=128)
+    status: Literal["completed", "failed", "denied"]
+    evidence_ids: list[OpaqueId] = Field(default_factory=list)
+    citation_ids: list[OpaqueId] = Field(default_factory=list)
+    observation_summary: str = Field(min_length=1, max_length=2000)
+
+
+class ReplanRequest(StrictModel):
+    replan_id: OpaqueId
+    reason: str = Field(min_length=1, max_length=2000)
+    missing_evidence_types: list[str] = Field(default_factory=list)
+    original_step_ids: list[OpaqueId] = Field(default_factory=list)
+    revised_steps: list[InvestigationPlanStep] = Field(default_factory=list)
+    added_step_ids: list[OpaqueId] = Field(default_factory=list)
+    removed_step_ids: list[OpaqueId] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class CriticReport(StrictModel):
     evidence_sufficient: bool
     requires_react: bool
@@ -160,10 +184,12 @@ class ReActAuditStep(StrictModel):
 
 class InvestigationTrace(StrictModel):
     plan: InvestigationPlan
+    plan_executions: list[PlanStepExecution] = Field(default_factory=list)
     critic: CriticReport
     react_steps: list[ReActAuditStep] = Field(default_factory=list, max_length=12)
     replans: int = Field(default=0, ge=0, le=2)
     tool_calls: int = Field(default=0, ge=0, le=12)
+    replan_history: list[ReplanRequest] = Field(default_factory=list, max_length=2)
     stop_reason: Literal[
         "not_required",
         "evidence_acquired",
@@ -191,6 +217,11 @@ class TriageResult(StrictModel):
     workflow_trace: list[str] = Field(default_factory=list)
     model_assessment: dict[str, Any] | None = None
     investigation: InvestigationTrace | None = None
+    model_health: ModelHealth = ModelHealth.NOT_CONFIGURED
+    degraded_reason: str | None = Field(default=None, max_length=1000)
+    agent_reports: list[dict[str, Any]] = Field(default_factory=list)
+    conflicts: list[dict[str, Any]] = Field(default_factory=list)
+    replan_history: list[ReplanRequest] = Field(default_factory=list)
     completed_at: datetime = Field(default_factory=utc_now)
 
 
@@ -200,6 +231,9 @@ class JobAccepted(StrictModel):
     status: JobStatus
     request_id: OpaqueId
     trace_id: OpaqueId
+    analysis_version: int = Field(default=1, ge=1)
+    parent_job_id: str | None = None
+    workflow_version_id: str = Field(default="workflow_default_v1", min_length=1)
 
 
 class JobView(JobAccepted):
@@ -217,6 +251,7 @@ class JobAuditEvent(StrictModel):
     status: JobStatus
     current_node: str | None = Field(default=None, max_length=128)
     occurred_at: datetime
+    data: dict[str, Any] = Field(default_factory=dict)
 
 
 class TraceCheckpoint(StrictModel):
@@ -259,3 +294,29 @@ class ErrorResponse(StrictModel):
     error: ErrorDetail
     request_id: OpaqueId
     trace_id: OpaqueId
+
+
+class LoginRequest(StrictModel):
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class UserView(StrictModel):
+    user_id: OpaqueId
+    username: str = Field(min_length=1, max_length=128)
+    role: UserRole
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class UserCreate(StrictModel):
+    username: str = Field(min_length=3, max_length=128, pattern=r"^[A-Za-z0-9_.-]+$")
+    password: str = Field(min_length=12, max_length=256)
+    role: UserRole
+
+
+class UserPatch(StrictModel):
+    role: UserRole | None = None
+    is_active: bool | None = None
+    password: str | None = Field(default=None, min_length=12, max_length=256)

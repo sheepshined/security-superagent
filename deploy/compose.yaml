@@ -8,13 +8,39 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - runtime-data:/app/data/runtime
-    mem_limit: 1g
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/runtime:/app/data/runtime
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/knowledge-index:/app/knowledge/index
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/knowledge-cache:/app/data/knowledge-cache
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/models:/app/data/models
+    environment:
+      PYTHONPATH: /app/backend
+      FASTEMBED_CACHE_PATH: /app/data/models/fastembed
+      KNOWLEDGE_CACHE_DIRECTORY: /app/data/knowledge-cache
+    mem_limit: 2g
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
       interval: 10s
       timeout: 3s
       retries: 5
+
+  knowledge-indexer:
+    profiles: ["indexer"]
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    env_file:
+      - ../.env
+    volumes:
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/knowledge-index:/app/knowledge/index
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/knowledge-cache:/app/data/knowledge-cache
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/models:/app/data/models
+    environment:
+      PYTHONPATH: /app/backend
+      FASTEMBED_CACHE_PATH: /app/data/models/fastembed
+      KNOWLEDGE_CACHE_DIRECTORY: /app/data/knowledge-cache
+    command: ["python", "-m", "app.rag.cli", "sync", "--activate"]
+    mem_limit: 3g
 
   frontend:
     build:
@@ -26,6 +52,4 @@ services:
     ports:
       - "5173:80"
     mem_limit: 256m
-
-volumes:
-  runtime-data:
+    restart: unless-stopped

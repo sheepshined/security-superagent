@@ -4,14 +4,24 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.dependencies import get_job_runtime
 from app.api.router import api_router
 from app.core.config import get_settings
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     get_settings()
-    yield
+    runtime_provider = application.dependency_overrides.get(
+        get_job_runtime,
+        get_job_runtime,
+    )
+    runtime = runtime_provider()
+    await runtime.start()
+    try:
+        yield
+    finally:
+        await runtime.stop()
 
 
 def create_app() -> FastAPI:

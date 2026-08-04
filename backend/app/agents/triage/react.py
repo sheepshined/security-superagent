@@ -204,9 +204,7 @@ class BoundedReActSubgraph:
                 item for item in observation.evidence if item.evidence_id not in existing_evidence
             ]
             new_citations = [
-                item
-                for item in observation.citations
-                if item.citation_id not in existing_citations
+                item for item in observation.citations if item.citation_id not in existing_citations
             ]
             observation_summary = observation.summary
         except InvestigationToolDeniedError as exc:

@@ -12,7 +12,7 @@ from app.agents.triage.investigation_tools import (
 )
 from app.agents.triage.structured import StructuredTriageAnalyzer
 from app.core.config import Settings
-from app.domain.enums import Verdict
+from app.domain.enums import ModelHealth, Verdict
 from app.domain.models import AlertRef, Evidence, NormalizedAlert
 from app.observability.langsmith import LangSmithTracePolicy
 from app.persistence.checkpoints import create_sqlite_checkpointer
@@ -50,14 +50,10 @@ class AliasToolInputModelStub:
         if request.max_tokens == 800:
             self.react_calls += 1
             tool_name = (
-                "query_endpoint_context"
-                if self.react_calls == 1
-                else "query_identity_context"
+                "query_endpoint_context" if self.react_calls == 1 else "query_identity_context"
             )
             tool_input = (
-                {"target": "asset_ws_041"}
-                if self.react_calls == 1
-                else {"host_id": "asset_ws_041"}
+                {"target": "asset_ws_041"} if self.react_calls == 1 else {"host_id": "asset_ws_041"}
             )
             content = json.dumps(
                 {
@@ -84,6 +80,12 @@ class AliasToolInputModelStub:
         return ModelResponse(content=content, model="deepseek-test", provider="test")
 
 
+class FailingModelStub:
+    def complete(self, request: ModelRequest) -> ModelResponse:
+        del request
+        raise TimeoutError("synthetic model timeout")
+
+
 class RecoveringXDRAdapter(MockXDRAdapter):
     def __init__(self) -> None:
         super().__init__()
@@ -92,7 +94,9 @@ class RecoveringXDRAdapter(MockXDRAdapter):
     def get_evidence(self, alert: NormalizedAlert) -> list[Evidence]:
         self.evidence_queries += 1
         evidence = super().get_evidence(alert)
-        if self.evidence_queries >= 2:
+        # The initial Plan–Execute phase issues three domain queries. Recovery
+        # becomes visible only to the explicit revised-plan tool calls.
+        if self.evidence_queries >= 4:
             evidence.append(
                 Evidence(
                     evidence_id="ev_recovered_process",
@@ -105,7 +109,7 @@ class RecoveringXDRAdapter(MockXDRAdapter):
                     integrity_hash="a" * 64,
                 )
             )
-        if self.evidence_queries >= 3:
+        if self.evidence_queries >= 5:
             evidence.append(
                 Evidence(
                     evidence_id="ev_recovered_identity",
@@ -245,9 +249,28 @@ def test_bounded_react_can_acquire_late_evidence() -> None:
     assert result.investigation is not None
     assert result.investigation.stop_reason == "evidence_acquired"
     assert result.investigation.critic.evidence_sufficient is True
+    assert len(result.investigation.replan_history) == 1
+    assert result.investigation.replan_history[0].added_step_ids
     assert {"ev_recovered_process", "ev_recovered_identity"} <= {
         item.evidence_id for item in result.evidence
     }
+
+
+def test_model_failure_is_safely_degraded_and_cannot_recommend_response() -> None:
+    runner = make_runner(model=FailingModelStub())
+    result = runner.run(
+        job_id="job_degraded",
+        case_id="case_degraded",
+        trace_id="trace_degraded",
+        alert_ref=AlertRef(source="mock-xdr", external_id="A-TRI-001"),
+        data_classification=DataClassification.SYNTHETIC,
+    )
+
+    assert result.verdict == Verdict.NEEDS_REVIEW
+    assert result.model_health == ModelHealth.DEGRADED
+    assert result.confidence <= 0.5
+    assert result.recommended_actions == []
+    assert result.degraded_reason == "model_error:TimeoutError"
 
 
 def test_investigation_registry_denies_write_tool() -> None:

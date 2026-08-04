@@ -1,0 +1,125 @@
+[
+  {
+    "source_id": "mitre-attack-enterprise",
+    "name": "MITRE ATT&CK Enterprise STIX",
+    "source_type": "stix",
+    "uri": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/v19.1/enterprise-attack/enterprise-attack.json",
+    "version": "v19.1",
+    "license": "MITRE ATT&CK Terms of Use",
+    "license_uri": "https://attack.mitre.org/resources/legal-and-branding/terms-of-use/",
+    "access_labels": ["public"],
+    "enabled": true,
+    "parser_options": {"domain": "enterprise-attack"}
+  },
+  {
+    "source_id": "cwe-top-25",
+    "name": "2025 CWE Top 25",
+    "source_type": "html",
+    "uri": "https://cwe.mitre.org/top25/archive/2025/2025_cwe_top25.html",
+    "version": "2025-cwe-4.20",
+    "license": "CWE Terms of Use",
+    "license_uri": "https://cwe.mitre.org/about/termsofuse.html",
+    "access_labels": ["public"],
+    "enabled": true,
+    "parser_options": {"scope": "top25"}
+  },
+  {
+    "source_id": "cisa-kev",
+    "name": "CISA Known Exploited Vulnerabilities Catalog",
+    "source_type": "json",
+    "uri": "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+    "version": "live",
+    "license": "U.S. Government public information",
+    "license_uri": "https://www.cisa.gov/about/website-policies",
+    "access_labels": ["public"],
+    "enabled": true,
+    "parser_options": {"schema": "cisa-kev"}
+  },
+  {
+    "source_id": "sigma-lateral-movement",
+    "name": "Sigma lateral movement core rules",
+    "source_type": "yaml",
+    "uri": "https://github.com/SigmaHQ/sigma/archive/refs/tags/r2026-04-01.tar.gz",
+    "version": "r2026-04-01",
+    "license": "Detection Rule License 1.1",
+    "license_uri": "https://github.com/SigmaHQ/Detection-Rule-License",
+    "access_labels": ["public"],
+    "enabled": true,
+    "parser_options": {
+      "archive": "tar.gz",
+      "path_contains": ["lateral_movement", "remote_service", "smb", "psexec", "wmic", "winrm"]
+    }
+  },
+  {
+    "source_id": "cn-cybersecurity-law",
+    "name": "中华人民共和国网络安全法（2025年修正）",
+    "source_type": "pdf",
+    "uri": "https://www.ssf.gov.cn/portal/rootfiles/2026/02/27/1773947155578281-1773947155587379.pdf",
+    "version": "2025-amendment-effective-2026-01-01",
+    "license": "中国国家法律法规数据库公开文本",
+    "license_uri": "https://flk.npc.gov.cn/",
+    "access_labels": ["public"],
+    "enabled": true,
+    "parser_options": {"jurisdiction": "CN"}
+  },
+  {
+    "source_id": "cn-data-security-law",
+    "name": "中华人民共和国数据安全法",
+    "source_type": "html",
+    "uri": "https://www.npc.gov.cn/npc/c2/c30834/202106/t20210610_311888.html",
+    "version": "2021-09-01",
+    "license": "中国国家法律法规数据库公开文本",
+    "license_uri": "https://flk.npc.gov.cn/",
+    "access_labels": ["public"],
+    "enabled": true,
+    "parser_options": {"jurisdiction": "CN"}
+  },
+  {
+    "source_id": "cn-personal-information-protection-law",
+    "name": "中华人民共和国个人信息保护法",
+    "source_type": "html",
+    "uri": "https://www.samr.gov.cn/wljys/gzzd/art/2023/art_3ef1e889c1e644d4b65b5f5c7f432386.html",
+    "version": "2021-11-01",
+    "license": "中国国家法律法规数据库公开文本",
+    "license_uri": "https://flk.npc.gov.cn/",
+    "access_labels": ["public"],
+    "enabled": true,
+    "parser_options": {"jurisdiction": "CN"}
+  },
+  {
+    "source_id": "cn-network-data-security-regulation",
+    "name": "网络数据安全管理条例",
+    "source_type": "html",
+    "uri": "https://app.www.gov.cn/govdata/gov/202409/30/520076/article.html",
+    "version": "effective-2025-01-01",
+    "license": "中国政府网公开文本",
+    "license_uri": "https://www.gov.cn/",
+    "access_labels": ["public"],
+    "enabled": true,
+    "parser_options": {"jurisdiction": "CN"}
+  },
+  {
+    "source_id": "cn-cii-security-regulation",
+    "name": "关键信息基础设施安全保护条例",
+    "source_type": "html",
+    "uri": "https://www.cac.gov.cn/2021-08/17/c_1630785976988160.htm",
+    "version": "2021-09-01",
+    "license": "中华人民共和国司法部公开文本",
+    "license_uri": "https://www.moj.gov.cn/",
+    "access_labels": ["public"],
+    "enabled": true,
+    "parser_options": {"jurisdiction": "CN"}
+  },
+  {
+    "source_id": "synthetic-lateral-movement-playbook",
+    "name": "横向移动事件受控响应演示规范",
+    "source_type": "snapshot",
+    "uri": "internal://playbooks/lateral-movement-response",
+    "version": "1.0.0",
+    "license": "Project synthetic content",
+    "license_uri": "internal://licenses/project-synthetic",
+    "access_labels": ["synthetic"],
+    "enabled": true,
+    "parser_options": {"scenario": "lateral_movement"}
+  }
+]

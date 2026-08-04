@@ -4,6 +4,7 @@ from app.domain.models import (
     InvestigationPlan,
     InvestigationPlanStep,
     NormalizedAlert,
+    ReplanRequest,
 )
 
 
@@ -46,9 +47,7 @@ class InvestigationPlanner:
                     step_id="plan_business_context",
                     agent="endpoint_agent",
                     objective="核验资产归属、业务白名单和授权变更记录。",
-                    required_evidence_types=sorted(
-                        {"asset_record", "change_record"} & required
-                    ),
+                    required_evidence_types=sorted({"asset_record", "change_record"} & required),
                 )
             )
         steps.append(
@@ -62,6 +61,39 @@ class InvestigationPlanner:
         return InvestigationPlan(
             objective=f"对“{alert.title}”形成可引用、可反证的安全研判结论。",
             steps=steps,
+        )
+
+    def create_replan(
+        self,
+        *,
+        plan: InvestigationPlan,
+        critic: CriticReport,
+        replan_number: int,
+    ) -> ReplanRequest:
+        agent_by_type = {
+            "network_flow": "network_agent",
+            "process_tree": "endpoint_agent",
+            "identity_event": "identity_agent",
+            "asset_record": "endpoint_agent",
+            "change_record": "endpoint_agent",
+        }
+        revised_steps = [
+            InvestigationPlanStep(
+                step_id=f"replan_{replan_number}_{evidence_type}",
+                agent=agent_by_type.get(evidence_type, "knowledge_agent"),
+                objective=f"针对缺失的 {evidence_type} 执行一次受限只读补证。",
+                required_evidence_types=[evidence_type],
+            )
+            for evidence_type in critic.missing_evidence_types
+        ]
+        return ReplanRequest(
+            replan_id=f"replan_{replan_number}",
+            reason=critic.rationale,
+            missing_evidence_types=critic.missing_evidence_types,
+            original_step_ids=[step.step_id for step in plan.steps],
+            revised_steps=revised_steps,
+            added_step_ids=[step.step_id for step in revised_steps],
+            removed_step_ids=[],
         )
 
 
@@ -95,9 +127,7 @@ class EvidenceCritic:
         if sufficient:
             rationale = "关键证据类型齐全，且未发现需要阻断裁决的证据冲突。"
         elif requires_react:
-            rationale = (
-                f"仍缺少 {', '.join(missing)}，允许进入只读、有界 ReAct 补证子图。"
-            )
+            rationale = f"仍缺少 {', '.join(missing)}，允许进入只读、有界 ReAct 补证子图。"
         else:
             rationale = "证据仍不足或存在冲突，自动补证预算已耗尽，应保留未知项并人工确认。"
         return CriticReport(

@@ -75,6 +75,8 @@ class ReadOnlyInvestigationToolRegistry:
                 "file_event",
                 "endpoint_event",
                 "telemetry_gap",
+                "asset_record",
+                "change_record",
             },
             "query_identity_context": {"identity_event"},
         }[tool_name]

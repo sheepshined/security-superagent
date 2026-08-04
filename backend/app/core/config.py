@@ -39,7 +39,18 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/runtime/security_superagent.sqlite3"
     langgraph_checkpoint_db: str = "./data/runtime/langgraph-checkpoints.sqlite3"
     chroma_persist_directory: str = "./knowledge/index"
+    knowledge_source_registry: str = "./knowledge/sources.json"
+    knowledge_cache_directory: str = "./data/knowledge-cache"
+    fastembed_cache_path: str = "./data/models/fastembed"
+    knowledge_embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     frontend_origin: str = "http://localhost:5173"
+
+    auth_required: bool = True
+    bootstrap_admin_username: str = ""
+    bootstrap_admin_password: str = ""
+    session_hours: int = Field(default=8, ge=1, le=24)
+    cookie_secure: bool = False
+    job_hard_timeout_seconds: int = Field(default=120, ge=30, le=600)
 
 
 @lru_cache

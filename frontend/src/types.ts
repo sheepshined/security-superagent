@@ -22,6 +22,11 @@ export interface RuntimeReadiness {
     langsmith: "enabled" | "disabled";
     scenario_count: number;
     sqlite: "ready" | "not_ready";
+    worker: "ready" | "not_ready";
+    auth: "ready" | "not_initialized";
+    chroma: string;
+    onnx: string;
+    mcp: string;
   };
 }
 
@@ -31,6 +36,28 @@ export interface JobAccepted {
   status: string;
   request_id: string;
   trace_id: string;
+  analysis_version: number;
+  parent_job_id: string | null;
+  workflow_version_id: string;
+}
+
+export interface AuthUser {
+  user_id: string;
+  username: string;
+  role: "admin" | "analyst" | "approver";
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JobEvent {
+  event_id: number;
+  job_id: string;
+  event_type: string;
+  status: string;
+  current_node: string | null;
+  occurred_at: string;
+  data: Record<string, unknown>;
 }
 
 export interface TraceReplay {
@@ -85,6 +112,15 @@ export interface InvestigationTrace {
       read_only: boolean;
     }>;
   };
+  plan_executions: Array<{
+    step_id: string;
+    agent: string;
+    tool_name: string;
+    status: "completed" | "failed" | "denied";
+    evidence_ids: string[];
+    citation_ids: string[];
+    observation_summary: string;
+  }>;
   critic: {
     evidence_sufficient: boolean;
     requires_react: boolean;
@@ -103,6 +139,14 @@ export interface InvestigationTrace {
   }>;
   replans: number;
   tool_calls: number;
+  replan_history: Array<{
+    replan_id: string;
+    reason: string;
+    missing_evidence_types: string[];
+    original_step_ids: string[];
+    added_step_ids: string[];
+    removed_step_ids: string[];
+  }>;
   stop_reason:
     | "not_required"
     | "evidence_acquired"
@@ -134,4 +178,6 @@ export interface TriageResult {
   workflow_trace: string[];
   model_assessment: Record<string, unknown> | null;
   investigation: InvestigationTrace | null;
+  model_health: "HEALTHY" | "DEGRADED" | "NOT_CONFIGURED";
+  degraded_reason: string | null;
 }

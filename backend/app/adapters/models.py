@@ -1,3 +1,4 @@
+import time
 from enum import StrEnum
 from typing import Any, Protocol
 
@@ -104,6 +105,7 @@ class DeepSeekModelAdapter:
         model: str,
         allow_real_security_data: bool = False,
         timeout_seconds: float = 30.0,
+        max_attempts: int = 2,
     ) -> None:
         if not api_key:
             raise ValueError("DeepSeek API key is required")
@@ -112,6 +114,7 @@ class DeepSeekModelAdapter:
         self._model = model
         self._allow_real_security_data = allow_real_security_data
         self._timeout_seconds = timeout_seconds
+        self._max_attempts = max(1, min(max_attempts, 2))
 
     def complete(self, request: ModelRequest) -> ModelResponse:
         if (
@@ -153,14 +156,31 @@ class DeepSeekModelAdapter:
         }
         if request.response_format:
             payload["response_format"] = request.response_format
+        body: dict[str, Any] | None = None
+        last_error: Exception | None = None
         with httpx.Client(timeout=self._timeout_seconds) as client:
-            response = client.post(
-                f"{self._base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {self._api_key}"},
-                json=payload,
-            )
-            response.raise_for_status()
-            body = response.json()
+            for attempt in range(1, self._max_attempts + 1):
+                try:
+                    response = client.post(
+                        f"{self._base_url}/chat/completions",
+                        headers={"Authorization": f"Bearer {self._api_key}"},
+                        json=payload,
+                    )
+                    response.raise_for_status()
+                    body = response.json()
+                    break
+                except (httpx.TimeoutException, httpx.TransportError) as exc:
+                    last_error = exc
+                except httpx.HTTPStatusError as exc:
+                    last_error = exc
+                    if exc.response.status_code < 500 and exc.response.status_code != 429:
+                        raise
+                if attempt < self._max_attempts:
+                    time.sleep(0.25 * attempt)
+        if body is None:
+            if last_error is None:
+                raise RuntimeError("DeepSeek request failed without a response")
+            raise last_error
         return ModelResponse(
             content=body["choices"][0]["message"]["content"],
             model=body.get("model", model),
