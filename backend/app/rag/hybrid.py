@@ -183,10 +183,7 @@ class HybridRetriever:
         seen_hashes: set[str] = set()
         seen_documents: set[str] = set()
         for hit in sorted(scored, key=lambda item: item.final_score, reverse=True):
-            if (
-                hit.chunk.content_hash in seen_hashes
-                or hit.chunk.document_id in seen_documents
-            ):
+            if hit.chunk.content_hash in seen_hashes or hit.chunk.document_id in seen_documents:
                 continue
             seen_hashes.add(hit.chunk.content_hash)
             seen_documents.add(hit.chunk.document_id)

@@ -6,6 +6,7 @@ from fastapi import Depends, HTTPException, Request
 
 from app.adapters.mock_xdr import MockXDRAdapter
 from app.adapters.models import DeepSeekModelAdapter
+from app.adapters.response import MockResponseAdapter
 from app.agents.approval.graph import ApprovalGraphRunner
 from app.agents.triage.graph import TriageGraphRunner
 from app.agents.triage.structured import StructuredTriageAnalyzer
@@ -18,12 +19,15 @@ from app.rag.catalog import KnowledgeCatalog
 from app.rag.hybrid import HybridRetriever
 from app.rag.index import KnowledgeIndexManager
 from app.runtime.jobs import JobRepository, JobRuntime
+from app.services.actions import ActionRepository, ActionService
 from app.services.auth import (
     AuthenticationError,
     AuthorizationError,
     AuthRepository,
     AuthService,
 )
+from app.services.workflows import WorkflowRepository, WorkflowService
+from app.tools.registry import DEFAULT_TOOL_REGISTRY, ToolRegistry
 
 SESSION_COOKIE = "ssa_session"
 CSRF_COOKIE = "ssa_csrf"
@@ -35,6 +39,16 @@ def get_xdr_adapter() -> MockXDRAdapter:
 
 
 @lru_cache
+def get_response_adapter() -> MockResponseAdapter:
+    return MockResponseAdapter()
+
+
+@lru_cache
+def get_tool_registry() -> ToolRegistry:
+    return DEFAULT_TOOL_REGISTRY
+
+
+@lru_cache
 def get_job_repository() -> JobRepository:
     return JobRepository(get_settings().database_url)
 
@@ -42,6 +56,35 @@ def get_job_repository() -> JobRepository:
 @lru_cache
 def get_auth_repository() -> AuthRepository:
     return AuthRepository(get_settings().database_url)
+
+
+@lru_cache
+def get_action_repository() -> ActionRepository:
+    return ActionRepository(get_settings().database_url)
+
+
+@lru_cache
+def get_action_service() -> ActionService:
+    return ActionService(
+        get_action_repository(),
+        get_job_repository(),
+        get_tool_registry(),
+        get_response_adapter(),
+    )
+
+
+@lru_cache
+def get_workflow_repository() -> WorkflowRepository:
+    return WorkflowRepository(get_settings().database_url)
+
+
+@lru_cache
+def get_workflow_service() -> WorkflowService:
+    return WorkflowService(
+        get_workflow_repository(),
+        get_tool_registry(),
+        get_knowledge_catalog(),
+    )
 
 
 @lru_cache

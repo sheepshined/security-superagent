@@ -9,8 +9,8 @@ from langgraph.types import StateSnapshot
 
 from app.adapters.models import DataClassification
 from app.adapters.protocols import XDRAdapter
+from app.agents.supervisor import InvestigationSupervisor
 from app.agents.triage.investigation_tools import (
-    InvestigationToolDeniedError,
     ReadOnlyInvestigationToolRegistry,
 )
 from app.agents.triage.planning import EvidenceCritic, InvestigationPlanner
@@ -19,10 +19,12 @@ from app.agents.triage.structured import StructuredTriageAnalyzer
 from app.agents.triage.tools import create_knowledge_search_tool
 from app.domain.enums import ModelHealth, Verdict
 from app.domain.models import (
+    AgentReport,
     AlertRef,
     Citation,
     CriticReport,
     Evidence,
+    EvidenceConflict,
     InvestigationPlan,
     InvestigationTrace,
     NormalizedAlert,
@@ -57,6 +59,8 @@ class TriageGraphState(TypedDict, total=False):
     replan_count: int
     replan_history: list[ReplanRequest]
     plan_executions: list[PlanStepExecution]
+    agent_reports: list[AgentReport]
+    conflicts: list[EvidenceConflict]
     model_assessment: dict[str, Any] | None
     model_error: str | None
     result: TriageResult
@@ -87,6 +91,7 @@ class TriageGraphRunner:
         self._planner = InvestigationPlanner()
         self._knowledge_tool = create_knowledge_search_tool(retriever)
         self._tools = ReadOnlyInvestigationToolRegistry(xdr, retriever)
+        self._supervisor = InvestigationSupervisor(self._tools)
         self._react = BoundedReActSubgraph(
             tools=self._tools,
             analyzer=analyzer,
@@ -167,6 +172,8 @@ class TriageGraphRunner:
                     "replan_count": 0,
                     "replan_history": [],
                     "plan_executions": [],
+                    "agent_reports": [],
+                    "conflicts": [],
                     "workflow_trace": [],
                 },
                 config=config,
@@ -258,78 +265,43 @@ class TriageGraphRunner:
         }
 
     def _execute_initial_plan(self, state: TriageGraphState) -> dict[str, Any]:
-        evidence: list[Evidence] = []
-        citations: list[Citation] = []
-        executions: list[PlanStepExecution] = []
-        seen_evidence: set[str] = set()
-        seen_citations: set[str] = set()
-        for step in state["investigation_plan"].steps:
-            tool_name, tool_input = self._tool_for_plan_step(step, state["alert"])
-            status = "completed"
-            try:
-                observation = self._tools.invoke(
-                    tool_name=tool_name,
-                    tool_input=tool_input,
-                    alert=state["alert"],
-                )
-                new_evidence = [
-                    item for item in observation.evidence if item.evidence_id not in seen_evidence
-                ]
-                new_citations = [
-                    item for item in observation.citations if item.citation_id not in seen_citations
-                ]
-                summary = observation.summary
-            except InvestigationToolDeniedError as exc:
-                new_evidence = []
-                new_citations = []
-                summary = str(exc)
-                status = "denied"
-            except Exception as exc:
-                new_evidence = []
-                new_citations = []
-                summary = f"只读计划步骤失败：{type(exc).__name__}"
-                status = "failed"
-            evidence.extend(new_evidence)
-            citations.extend(new_citations)
-            seen_evidence.update(item.evidence_id for item in new_evidence)
-            seen_citations.update(item.citation_id for item in new_citations)
-            executions.append(
-                PlanStepExecution(
-                    step_id=step.step_id,
-                    agent=step.agent,
-                    tool_name=tool_name,
-                    status=status,
-                    evidence_ids=[item.evidence_id for item in new_evidence],
-                    citation_ids=[item.citation_id for item in new_citations],
-                    observation_summary=summary,
-                )
-            )
+        def progress(agent: str, execution: PlanStepExecution) -> None:
             self._notify(
                 "agent_step_completed",
                 "execute_initial_plan",
-                min(48, 38 + len(executions) * 3),
+                44,
                 {
-                    "step_id": step.step_id,
-                    "agent": step.agent,
-                    "tool": tool_name,
-                    "status": status,
+                    "step_id": execution.step_id,
+                    "agent": agent,
+                    "tool": execution.tool_name,
+                    "status": execution.status,
                 },
             )
+
+        execution = self._supervisor.execute(
+            plan=state["investigation_plan"],
+            alert=state["alert"],
+            progress=progress,
+        )
         self._notify(
             "agent_completed",
             "execute_initial_plan",
             48,
             {
-                "evidence_count": len(evidence),
-                "citation_count": len(citations),
-                "step_count": len(executions),
-                "agent": "investigation",
+                "evidence_count": len(execution.evidence),
+                "citation_count": len(execution.citations),
+                "step_count": len(execution.executions),
+                "agent_count": len(execution.agent_reports),
+                "conflict_count": len(execution.conflicts),
+                "agent": "supervisor",
             },
         )
         return {
-            "evidence": evidence,
-            "citations": citations,
-            "plan_executions": executions,
+            "evidence": execution.evidence,
+            "citations": execution.citations,
+            "plan_executions": execution.executions,
+            "agent_reports": execution.agent_reports,
+            "conflicts": execution.conflicts,
             "workflow_trace": [*state["workflow_trace"], "execute_initial_plan"],
         }
 
@@ -549,7 +521,13 @@ class TriageGraphRunner:
             )
         else:
             result = result.model_copy(update={"model_health": ModelHealth.HEALTHY})
-        result = result.model_copy(update={"replan_history": state["replan_history"]})
+        result = result.model_copy(
+            update={
+                "replan_history": state["replan_history"],
+                "agent_reports": state["agent_reports"],
+                "conflicts": state["conflicts"],
+            }
+        )
         self._notify(
             "policy_finalized",
             "policy_finalize",
@@ -612,41 +590,10 @@ class TriageGraphRunner:
             "replan_count": 0,
             "replan_history": [],
             "plan_executions": [],
+            "agent_reports": [],
+            "conflicts": [],
             "workflow_trace": [],
         }
-
-    @staticmethod
-    def _tool_for_plan_step(
-        step: Any,
-        alert: NormalizedAlert,
-    ) -> tuple[str, dict[str, str]]:
-        if step.agent == "knowledge_agent":
-            return "search_security_knowledge", {"query": alert.title}
-        target = TriageGraphRunner._default_target(alert)
-        tool_by_agent = {
-            "network_agent": "query_network_context",
-            "endpoint_agent": "query_endpoint_context",
-            "identity_agent": "query_identity_context",
-        }
-        return tool_by_agent[step.agent], {"target": target}
-
-    @staticmethod
-    def _default_target(alert: NormalizedAlert) -> str:
-        source_host = next(
-            (
-                entity.id
-                for entity in alert.entities
-                if entity.type == "host" and entity.role == "source"
-            ),
-            None,
-        )
-        if source_host:
-            return source_host
-        if alert.entities:
-            return alert.entities[0].id
-        if alert.indicators:
-            return alert.indicators[0].value
-        return alert.external_id
 
     @staticmethod
     def _stop_reason(state: TriageGraphState) -> str:

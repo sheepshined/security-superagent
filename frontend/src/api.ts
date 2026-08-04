@@ -2,10 +2,16 @@ import type {
   AuthUser,
   JobAccepted,
   JobEvent,
+  KnowledgeMetrics,
+  KnowledgeSource,
+  ResponseAction,
   RuntimeReadiness,
   ScenarioSummary,
+  ToolDescriptor,
   TraceReplay,
-  TriageResult
+  TriageResult,
+  WorkflowTemplate,
+  WorkflowVersion
 } from "./types";
 
 export class ApiError extends Error {
@@ -19,20 +25,21 @@ export class ApiError extends Error {
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? "GET").toUpperCase();
+  const {headers: initHeaders, ...requestOptions} = init ?? {};
   const csrfToken = document.cookie
     .split("; ")
     .find((item) => item.startsWith("ssa_csrf="))
     ?.split("=", 2)[1];
   const response = await fetch(url, {
+    ...requestOptions,
     credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
       ...(method !== "GET" && method !== "HEAD" && csrfToken
         ? {"X-CSRF-Token": decodeURIComponent(csrfToken)}
         : {}),
-      ...init?.headers
-    },
-    ...init
+      ...initHeaders
+    }
   });
   if (!response.ok) {
     throw new ApiError(`请求失败：${response.status}`, response.status);
@@ -145,6 +152,80 @@ export function getTriageResult(jobId: string): Promise<TriageResult> {
 
 export function getTraceReplay(traceId: string): Promise<TraceReplay> {
   return request<TraceReplay>(`/api/v1/traces/${traceId}`);
+}
+
+export function listActions(jobId?: string): Promise<ResponseAction[]> {
+  const query = jobId ? `?job_id=${encodeURIComponent(jobId)}` : "";
+  return request<ResponseAction[]>(`/api/v1/actions${query}`);
+}
+
+export function proposeAction(jobId: string, proposalIndex = 0): Promise<ResponseAction> {
+  return request<ResponseAction>("/api/v1/actions", {
+    method: "POST",
+    headers: {"Idempotency-Key": crypto.randomUUID()},
+    body: JSON.stringify({job_id: jobId, proposal_index: proposalIndex})
+  });
+}
+
+export function transitionAction(
+  actionId: string,
+  transition: "dry-run" | "approve" | "reject" | "execute" | "verify" | "rollback",
+  comment = ""
+): Promise<ResponseAction> {
+  const needsBody = transition === "approve" || transition === "reject";
+  return request<ResponseAction>(`/api/v1/actions/${actionId}/${transition}`, {
+    method: "POST",
+    body: needsBody ? JSON.stringify({comment}) : undefined
+  });
+}
+
+export function listTools(): Promise<ToolDescriptor[]> {
+  return request<ToolDescriptor[]>("/api/v1/tools");
+}
+
+export function getKnowledgeMetrics(): Promise<KnowledgeMetrics> {
+  return request<KnowledgeMetrics>("/api/v1/knowledge/metrics");
+}
+
+export function listKnowledgeSources(): Promise<KnowledgeSource[]> {
+  return request<KnowledgeSource[]>("/api/v1/knowledge/sources");
+}
+
+export function listWorkflowTemplates(): Promise<WorkflowTemplate[]> {
+  return request<WorkflowTemplate[]>("/api/v1/workflows/templates");
+}
+
+export function listWorkflowVersions(): Promise<WorkflowVersion[]> {
+  return request<WorkflowVersion[]>("/api/v1/workflows/versions");
+}
+
+export function createWorkflowVersion(
+  templateId: string,
+  config: WorkflowTemplate["default_config"]
+): Promise<WorkflowVersion> {
+  return request<WorkflowVersion>(`/api/v1/workflows/${templateId}/versions`, {
+    method: "POST",
+    body: JSON.stringify({config})
+  });
+}
+
+export function validateWorkflowVersion(workflowVersionId: string): Promise<{
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}> {
+  return request(`/api/v1/workflows/versions/${workflowVersionId}/validate`, {
+    method: "POST"
+  });
+}
+
+export function activateWorkflowVersion(
+  workflowVersionId: string
+): Promise<WorkflowVersion> {
+  return request<WorkflowVersion>(
+    `/api/v1/workflows/versions/${workflowVersionId}/activate`,
+    {method: "POST"}
+  );
 }
 
 export async function waitForTriageResult(

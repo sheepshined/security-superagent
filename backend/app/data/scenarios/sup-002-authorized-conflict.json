@@ -1,0 +1,80 @@
+{
+  "scenario": {
+    "scenario_id": "SUP-002",
+    "title": "Suspicious maintenance activity with conflicting evidence",
+    "description": "Network and endpoint behavior resembles lateral movement, while identity and change evidence support authorized operations.",
+    "severity": "high",
+    "expected_verdict": "false_positive",
+    "supports_superagent": true
+  },
+  "alert": {
+    "alert_id": "alt_sup_002",
+    "source": "mock-xdr",
+    "external_id": "A-SUP-002",
+    "title": "Administrative WinRM fan-out during maintenance",
+    "severity": "high",
+    "occurred_at": "2026-08-20T18:05:00+00:00",
+    "ingested_at": "2026-08-20T18:05:05+00:00",
+    "entities": [
+      {"type": "host", "id": "asset_jump_02", "role": "source"},
+      {"type": "host", "id": "asset_app_12", "role": "target"},
+      {"type": "user", "id": "user_patch_admin", "role": "actor"}
+    ],
+    "indicators": [],
+    "labels": ["lateral-movement", "superagent", "candidate-false-positive", "evidence-conflict"],
+    "raw_ref": "mock://alerts/A-SUP-002",
+    "schema_version": "1.0"
+  },
+  "evidence": [
+    {
+      "evidence_id": "ev_sup_002_network",
+      "type": "network_flow",
+      "source": "mock-network",
+      "statement": "JUMP-02 opened WinRM sessions to twelve application servers in five minutes.",
+      "observed_at": "2026-08-20T18:05:00+00:00",
+      "confidence": 0.96,
+      "raw_ref": "mock://flows/sup-002",
+      "access_label": "synthetic"
+    },
+    {
+      "evidence_id": "ev_sup_002_process",
+      "type": "process_tree",
+      "source": "mock-edr",
+      "statement": "A signed patch orchestration binary launched PowerShell remoting commands on JUMP-02.",
+      "observed_at": "2026-08-20T18:04:53+00:00",
+      "confidence": 0.94,
+      "raw_ref": "mock://process/sup-002",
+      "access_label": "synthetic"
+    },
+    {
+      "evidence_id": "ev_sup_002_identity",
+      "type": "identity_event",
+      "source": "mock-identity",
+      "statement": "The patch administrator used a managed privileged workstation and completed MFA.",
+      "observed_at": "2026-08-20T18:04:22+00:00",
+      "confidence": 0.99,
+      "raw_ref": "mock://identity/sup-002",
+      "access_label": "synthetic"
+    },
+    {
+      "evidence_id": "ev_sup_002_change",
+      "type": "change_record",
+      "source": "mock-cmdb",
+      "statement": "Approved change CHG-SUP-002 authorizes patch fan-out from JUMP-02 during 18:00-20:00.",
+      "observed_at": "2026-08-20T18:00:00+00:00",
+      "confidence": 0.99,
+      "raw_ref": "mock://changes/CHG-SUP-002",
+      "access_label": "synthetic"
+    },
+    {
+      "evidence_id": "ev_sup_002_asset",
+      "type": "asset_record",
+      "source": "mock-cmdb",
+      "statement": "JUMP-02 is an approved privileged maintenance host assigned to the patch team.",
+      "observed_at": "2026-08-20T18:00:00+00:00",
+      "confidence": 0.99,
+      "raw_ref": "mock://assets/JUMP-02",
+      "access_label": "synthetic"
+    }
+  ]
+}

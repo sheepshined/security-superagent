@@ -1,0 +1,12 @@
+^/workspace/\.git/
+^/workspace/\.venv/
+^/workspace/\.pytest_cache/
+^/workspace/\.ruff_cache/
+^/workspace/\.coverage$
+^/workspace/\.env$
+^/workspace/data/
+^/workspace/knowledge/index/
+^/workspace/frontend/node_modules/
+^/workspace/frontend/dist/
+^/workspace/frontend/test-results/
+^/workspace/frontend/playwright-report/

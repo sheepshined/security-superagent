@@ -25,6 +25,8 @@ export interface RuntimeReadiness {
     worker: "ready" | "not_ready";
     auth: "ready" | "not_initialized";
     chroma: string;
+    knowledge_index: string;
+    knowledge_chunks: number;
     onnx: string;
     mcp: string;
   };
@@ -180,4 +182,134 @@ export interface TriageResult {
   investigation: InvestigationTrace | null;
   model_health: "HEALTHY" | "DEGRADED" | "NOT_CONFIGURED";
   degraded_reason: string | null;
+  agent_reports: Array<{
+    agent: "network_agent" | "endpoint_agent" | "identity_agent" | "knowledge_agent";
+    objective: string;
+    status: "completed" | "partial" | "failed";
+    evidence_ids: string[];
+    citation_ids: string[];
+    observations: string[];
+    unknowns: string[];
+    tool_calls: number;
+    started_at: string;
+    completed_at: string;
+  }>;
+  conflicts: Array<{
+    conflict_id: string;
+    topic: string;
+    evidence_ids: string[];
+    statements: string[];
+    status: "unresolved" | "resolved_as_authorized_activity" | "resolved_as_threat";
+    resolution: string;
+  }>;
+}
+
+export type ActionStatus =
+  | "PROPOSED"
+  | "DRY_RUN_PASSED"
+  | "PENDING_APPROVAL"
+  | "APPROVED"
+  | "REJECTED"
+  | "EXECUTING"
+  | "SUCCEEDED"
+  | "FAILED"
+  | "VERIFIED"
+  | "ROLLED_BACK"
+  | "EXPIRED";
+
+export interface ResponseAction {
+  action_id: string;
+  job_id: string;
+  tool_name: string;
+  target: string;
+  scope: Record<string, unknown>;
+  reason: string;
+  expected_effect: string;
+  rollback: string;
+  risk_level: string;
+  status: ActionStatus;
+  plan_hash: string;
+  requested_by: string;
+  requested_by_username: string;
+  approvals: Array<{
+    approval_id: string;
+    reviewer_id: string;
+    reviewer_username: string;
+    decision: "approved" | "rejected";
+    comment: string;
+    decided_at: string;
+  }>;
+  dry_run_result: Record<string, unknown> | null;
+  execution_result: Record<string, unknown> | null;
+  verification_result: Record<string, unknown> | null;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ToolDescriptor {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+  risk_level: string;
+  allowed_roles: AuthUser["role"][];
+  timeout_seconds: number;
+  side_effects: boolean;
+  requires_approval: boolean;
+  idempotency_strategy: "read_only" | "explicit_key" | "plan_hash";
+}
+
+export interface KnowledgeSource {
+  source_id: string;
+  name: string;
+  source_type: string;
+  uri: string;
+  version: string;
+  license: string;
+  access_labels: string[];
+  enabled: boolean;
+}
+
+export interface KnowledgeMetrics {
+  active_index_id: string | null;
+  index_count: number;
+  ready_index_count: number;
+  source_count: number;
+  enabled_source_count: number;
+  document_count: number;
+  chunk_count: number;
+  chroma_enabled: boolean;
+}
+
+export interface WorkflowConfig {
+  node_enabled: Record<string, boolean>;
+  model: string;
+  node_timeout_seconds: number;
+  retries: number;
+  max_tool_calls: number;
+  max_replans: number;
+  agents: string[];
+  tool_allowlist: string[];
+  knowledge_source_ids: string[];
+}
+
+export interface WorkflowTemplate {
+  template_id: string;
+  name: string;
+  description: string;
+  fixed_nodes: string[];
+  configurable_nodes: string[];
+  default_config: WorkflowConfig;
+}
+
+export interface WorkflowVersion {
+  workflow_version_id: string;
+  template_id: string;
+  version_number: number;
+  config: WorkflowConfig;
+  config_hash: string;
+  status: "draft" | "validated" | "active";
+  created_by: string;
+  created_at: string;
+  activated_at: string | null;
 }

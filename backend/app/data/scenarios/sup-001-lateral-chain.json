@@ -1,0 +1,70 @@
+{
+  "scenario": {
+    "scenario_id": "SUP-001",
+    "title": "Cross-domain lateral movement attack chain",
+    "description": "East-west traffic, a suspicious endpoint process, and anomalous identity activity form a confirmed attack chain.",
+    "severity": "critical",
+    "expected_verdict": "true_positive",
+    "supports_superagent": true
+  },
+  "alert": {
+    "alert_id": "alt_sup_001",
+    "source": "mock-xdr",
+    "external_id": "A-SUP-001",
+    "title": "Possible lateral movement across finance servers",
+    "severity": "critical",
+    "occurred_at": "2026-08-20T03:14:00+00:00",
+    "ingested_at": "2026-08-20T03:14:06+00:00",
+    "entities": [
+      {"type": "host", "id": "asset_fin_ws_07", "role": "source"},
+      {"type": "host", "id": "asset_fin_db_01", "role": "target"},
+      {"type": "user", "id": "user_fin_ops_02", "role": "actor"}
+    ],
+    "indicators": [{"type": "ip", "value": "198.51.100.77"}],
+    "labels": ["lateral-movement", "superagent", "east-west", "credential-access"],
+    "raw_ref": "mock://alerts/A-SUP-001",
+    "schema_version": "1.0"
+  },
+  "evidence": [
+    {
+      "evidence_id": "ev_sup_001_network",
+      "type": "network_flow",
+      "source": "mock-network",
+      "statement": "FIN-WS-07 initiated SMB and WinRM sessions to six finance servers within 70 seconds.",
+      "observed_at": "2026-08-20T03:14:00+00:00",
+      "confidence": 0.98,
+      "raw_ref": "mock://flows/sup-001",
+      "access_label": "synthetic"
+    },
+    {
+      "evidence_id": "ev_sup_001_process",
+      "type": "process_tree",
+      "source": "mock-edr",
+      "statement": "A macro-launched PowerShell process invoked remote service tooling from FIN-WS-07.",
+      "observed_at": "2026-08-20T03:13:44+00:00",
+      "confidence": 0.97,
+      "raw_ref": "mock://process/sup-001",
+      "access_label": "synthetic"
+    },
+    {
+      "evidence_id": "ev_sup_001_identity",
+      "type": "identity_event",
+      "source": "mock-identity",
+      "statement": "The finance operations account authenticated from a new device and obtained an elevated token.",
+      "observed_at": "2026-08-20T03:13:21+00:00",
+      "confidence": 0.94,
+      "raw_ref": "mock://identity/sup-001",
+      "access_label": "synthetic"
+    },
+    {
+      "evidence_id": "ev_sup_001_change",
+      "type": "change_record",
+      "source": "mock-cmdb",
+      "statement": "No approved change record covers FIN-WS-07 or the finance operations account in this window.",
+      "observed_at": "2026-08-20T03:15:00+00:00",
+      "confidence": 0.99,
+      "raw_ref": "mock://changes/sup-001",
+      "access_label": "synthetic"
+    }
+  ]
+}

@@ -30,6 +30,7 @@ jobs:
           -v "$PWD:/workspace"
           trufflesecurity/trufflehog:3.95.2
           filesystem /workspace
+          --exclude-paths=/workspace/.trufflehog-exclude.txt
           --fail --only-verified --no-update
 
       - name: Set up Python
@@ -42,10 +43,13 @@ jobs:
         run: python -m pip install -e ".[dev]"
 
       - name: Ruff
-        run: python -m ruff check backend tests
+        run: python -m ruff check backend tests scripts
 
       - name: Backend tests
-        run: python -m pytest
+        run: python -m pytest --cov=backend/app --cov-report=term-missing
+
+      - name: Offline release-gate evaluation
+        run: python -m app.evaluation --summary-only
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -61,9 +65,39 @@ jobs:
         working-directory: frontend
         run: npm run typecheck
 
+      - name: Frontend unit and component tests
+        working-directory: frontend
+        run: npm test
+
       - name: Frontend build
         working-directory: frontend
         run: npm run build
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Start E2E backend
+        run: |
+          AUTH_REQUIRED=false \
+          MODEL_PROVIDER=mock \
+          LANGSMITH_TRACING=false \
+          DATABASE_URL=sqlite:////tmp/security-superagent-e2e.sqlite3 \
+          LANGGRAPH_CHECKPOINT_DB=/tmp/security-superagent-e2e-checkpoints.sqlite3 \
+          nohup python -m uvicorn app.main:app --app-dir backend \
+            --host 127.0.0.1 --port 8001 >/tmp/security-superagent-e2e.log 2>&1 &
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8001/healthz >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/security-superagent-e2e.log
+          exit 1
+
+      - name: Frontend E2E
+        working-directory: frontend
+        run: npm run e2e
 
       - name: Build backend image
         run: docker build -f deploy/backend.Dockerfile -t security-superagent-backend:ci .

@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     knowledge_embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     frontend_origin: str = "http://localhost:5173"
 
+    mcp_enabled: bool = True
+    mcp_host: str = "127.0.0.1"
+    mcp_port: int = Field(default=8100, ge=1, le=65535)
+
     auth_required: bool = True
     bootstrap_admin_username: str = ""
     bootstrap_admin_password: str = ""

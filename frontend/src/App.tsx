@@ -47,10 +47,12 @@ import {
   listScenarios,
   login,
   logout,
+  proposeAction,
   streamJob,
   submitTriage,
   getTriageResult
 } from "./api";
+import {ApprovalCenter, KnowledgeCenter, WorkflowCenter} from "./OperationsPages";
 import type {
   AuthUser,
   JobEvent,
@@ -66,7 +68,9 @@ const {Title, Text, Paragraph} = Typography;
 const scenarioExternalIds: Record<string, string> = {
   "TRI-001": "A-TRI-001",
   "TRI-002": "A-TRI-002",
-  "TRI-003": "A-TRI-003"
+  "TRI-003": "A-TRI-003",
+  "SUP-001": "A-SUP-001",
+  "SUP-002": "A-SUP-002"
 };
 
 const verdictLabels: Record<Verdict, string> = {
@@ -111,6 +115,8 @@ export default function App() {
   const [jobProgress, setJobProgress] = useState(0);
   const [currentNode, setCurrentNode] = useState<string>();
   const [jobEvents, setJobEvents] = useState<JobEvent[]>([]);
+  const [activePage, setActivePage] = useState("运营总览");
+  const [approvalRefresh, setApprovalRefresh] = useState(0);
   const [api, contextHolder] = message.useMessage();
 
   useEffect(() => {
@@ -198,6 +204,18 @@ export default function App() {
       api.error("任务执行失败，请检查后端状态。");
     } finally {
       setRunningId(undefined);
+    }
+  };
+
+  const createResponsePlan = async (jobId: string, proposalIndex: number) => {
+    try {
+      await proposeAction(jobId, proposalIndex);
+      setApprovalRefresh((value) => value + 1);
+      setDrawerOpen(false);
+      setActivePage("审批中心");
+      api.success("不可变响应计划已创建，请先执行 dry-run。" );
+    } catch {
+      api.error("无法创建响应计划，请确认任务结论和当前角色。" );
     }
   };
 
@@ -316,7 +334,11 @@ export default function App() {
             status="processing"
             text={`模型：${runtime?.dependencies.model ?? "检测中"}`}
           />
-          <Segmented options={["运营总览", "场景编排", "知识中心"]} />
+          <Segmented
+            value={activePage}
+            options={["运营总览", "工作流", "知识中心", "审批中心"]}
+            onChange={(value) => setActivePage(String(value))}
+          />
           <Tag icon={<UserOutlined />} color="blue">
             {user.username} · {user.role}
           </Tag>
@@ -327,6 +349,14 @@ export default function App() {
       </header>
 
       <main className="content">
+        {activePage === "审批中心" ? (
+          <ApprovalCenter user={user} refreshToken={approvalRefresh} />
+        ) : activePage === "知识中心" ? (
+          <KnowledgeCenter />
+        ) : activePage === "工作流" ? (
+          <WorkflowCenter user={user} />
+        ) : (
+          <>
         <section className="hero">
           <div>
             <Text className="eyebrow">AI SECURITY OPERATIONS</Text>
@@ -436,6 +466,8 @@ export default function App() {
             </Card>
           </Col>
         </Row>
+          </>
+        )}
       </main>
 
       <Drawer
@@ -445,7 +477,13 @@ export default function App() {
         onClose={() => setDrawerOpen(false)}
       >
         {result ? (
-          <ResultPanel result={result} traceReplay={traceReplay} />
+          <ResultPanel
+            result={result}
+            traceReplay={traceReplay}
+            onPropose={(jobId, proposalIndex) =>
+              void createResponsePlan(jobId, proposalIndex)
+            }
+          />
         ) : (
           <Empty description="暂无结果" />
         )}
@@ -479,10 +517,12 @@ function MetricCard({
 
 function ResultPanel({
   result,
-  traceReplay
+  traceReplay,
+  onPropose
 }: {
   result: TriageResult;
   traceReplay?: TraceReplay;
+  onPropose: (jobId: string, proposalIndex: number) => void;
 }) {
   const riskColor =
     result.risk_score >= 80 ? "#ff6174" : result.risk_score >= 60 ? "#f7b955" : "#49d17d";
@@ -523,6 +563,46 @@ function ResultPanel({
         </Row>
       </Card>
       {result.investigation && <InvestigationPanel trace={result.investigation} />}
+      {result.agent_reports.length > 0 && (
+        <Card size="small" title="Specialist Agent reports">
+          <List
+            size="small"
+            dataSource={result.agent_reports}
+            renderItem={(report) => (
+              <List.Item>
+                <List.Item.Meta
+                  title={
+                    <Space>
+                      <Text code>{report.agent}</Text>
+                      <Tag color={report.status === "completed" ? "green" : "gold"}>
+                        {report.status}
+                      </Tag>
+                      <Tag>{report.tool_calls} tool calls</Tag>
+                    </Space>
+                  }
+                  description={
+                    <Space direction="vertical" size={2}>
+                      <Text>{report.objective}</Text>
+                      {report.observations.map((observation) => (
+                        <Text type="secondary" key={observation}>{observation}</Text>
+                      ))}
+                    </Space>
+                  }
+                />
+              </List.Item>
+            )}
+          />
+        </Card>
+      )}
+      {result.conflicts.map((conflict) => (
+        <Alert
+          key={conflict.conflict_id}
+          type="warning"
+          showIcon
+          message={`Evidence conflict: ${conflict.topic}`}
+          description={`${conflict.resolution} (${conflict.status})`}
+        />
+      ))}
       {traceReplay && <TraceReplayPanel replay={traceReplay} />}
       <div>
         <Title level={5}>证据链</Title>
@@ -585,7 +665,7 @@ function ResultPanel({
           description={result.unknowns.join("；")}
         />
       )}
-      {result.recommended_actions.map((action) => (
+      {result.recommended_actions.map((action, proposalIndex) => (
         <Card
           key={`${action.tool_name}-${action.target}`}
           size="small"
@@ -599,6 +679,13 @@ function ResultPanel({
               <Tag color="gold">{action.risk_level}</Tag>
               <Tag color="blue">{action.dry_run ? "dry-run" : "execute"}</Tag>
             </Space>
+            <Button
+              type="primary"
+              ghost
+              onClick={() => onPropose(result.job_id, proposalIndex)}
+            >
+              创建不可变响应计划
+            </Button>
           </Space>
         </Card>
       ))}

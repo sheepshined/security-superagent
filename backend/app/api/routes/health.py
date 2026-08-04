@@ -66,6 +66,6 @@ def readyz(
             "knowledge_index": knowledge_metrics.active_index_id or "snapshot_fallback",
             "knowledge_chunks": knowledge_metrics.chunk_count,
             "onnx": "ready" if knowledge_metrics.chroma_enabled else "not_cached",
-            "mcp": "not_configured",
+            "mcp": "configured" if settings.mcp_enabled else "disabled",
         },
     }

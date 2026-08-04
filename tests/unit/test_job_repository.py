@@ -6,6 +6,7 @@ import pytest
 from app.adapters.mock_xdr import MockXDRAdapter
 from app.domain.enums import JobStatus
 from app.domain.models import AlertRef, TriageJobRequest, utc_now
+from app.persistence.migrations import LATEST_SCHEMA_VERSION
 from app.runtime.jobs import JobRepository, JobRuntime, ResultNotReadyError
 from app.services.triage import TriageService
 
@@ -141,7 +142,10 @@ def test_legacy_database_is_migrated_without_losing_jobs(tmp_path: Path) -> None
     repository.close()
 
     verify = sqlite3.connect(path)
-    assert verify.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 3
+    assert (
+        verify.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
     assert verify.execute("SELECT COUNT(*) FROM triage_jobs").fetchone()[0] == 2
     verify.close()
 

@@ -120,7 +120,7 @@ class EvidenceCritic:
         required = cls.required_evidence_types(alert)
         observed = {item.type for item in evidence}
         missing = sorted(required - observed)
-        conflicts = cls._find_conflicts(observed)
+        conflicts = cls._find_conflicts(alert, observed)
         sufficient = not missing and not conflicts
         can_query = bool(set(missing) & cls.REACT_QUERYABLE_TYPES)
         requires_react = sufficient is False and can_query and replan_count < max_replans
@@ -141,6 +141,8 @@ class EvidenceCritic:
     @staticmethod
     def required_evidence_types(alert: NormalizedAlert) -> set[str]:
         labels = set(alert.labels)
+        if "evidence-conflict" in labels:
+            return {"network_flow", "process_tree", "identity_event", "change_record"}
         if "candidate-false-positive" in labels:
             return {"asset_record", "change_record"}
         if "lateral-movement" in labels:
@@ -152,6 +154,14 @@ class EvidenceCritic:
         return {"network_flow"}
 
     @staticmethod
-    def _find_conflicts(observed: set[str]) -> list[str]:
-        del observed
+    def _find_conflicts(alert: NormalizedAlert, observed: set[str]) -> list[str]:
+        if (
+            "evidence-conflict" in alert.labels
+            and "network_flow" in observed
+            and {"change_record", "asset_record"} & observed
+        ):
+            return [
+                "Suspicious network behavior is contradicted by authorized operations context; "
+                "the conflict must remain visible and blocks automatic high-risk response."
+            ]
         return []

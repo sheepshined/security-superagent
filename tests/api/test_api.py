@@ -1,35 +1,61 @@
+import tempfile
 import time
+from pathlib import Path
+from uuid import uuid4
 
 from app.adapters.mock_xdr import MockXDRAdapter
+from app.adapters.response import MockResponseAdapter
 from app.agents.triage.graph import TriageGraphRunner
 from app.api.dependencies import (
+    get_action_service,
     get_auth_service,
     get_job_repository,
     get_job_runtime,
     get_triage_graph_runner,
+    get_workflow_service,
 )
 from app.core.config import Settings, get_settings
 from app.main import app
 from app.observability.langsmith import LangSmithTracePolicy
+from app.rag.catalog import KnowledgeCatalog
 from app.rag.hybrid import HybridRetriever
 from app.runtime.jobs import JobRepository, JobRuntime
+from app.services.actions import ActionRepository, ActionService
 from app.services.auth import AuthRepository, AuthService
+from app.services.workflows import WorkflowRepository, WorkflowService
+from app.tools.registry import DEFAULT_TOOL_REGISTRY
 from fastapi.testclient import TestClient
 
 test_settings = Settings(_env_file=None, langsmith_tracing=False)
-test_repository = JobRepository()
+API_DATABASE_URL = (
+    f"sqlite:///{(Path(tempfile.gettempdir()) / f'ssa-api-{uuid4().hex}.sqlite3').as_posix()}"
+)
+test_repository = JobRepository(API_DATABASE_URL)
 test_graph_runner = TriageGraphRunner(
     xdr=MockXDRAdapter(),
     retriever=HybridRetriever(),
     trace_policy=LangSmithTracePolicy(Settings(_env_file=None, langsmith_tracing=False)),
 )
 test_runtime = JobRuntime(test_repository, test_graph_runner)
-test_auth = AuthService(AuthRepository(), session_hours=8)
+test_auth = AuthService(AuthRepository(API_DATABASE_URL), session_hours=8)
 test_auth.bootstrap_admin("test-admin", "correct-horse-battery-staple")
+test_actions = ActionService(
+    ActionRepository(API_DATABASE_URL),
+    test_repository,
+    DEFAULT_TOOL_REGISTRY,
+    MockResponseAdapter(),
+)
+test_workflows = WorkflowService(
+    WorkflowRepository(API_DATABASE_URL),
+    DEFAULT_TOOL_REGISTRY,
+    KnowledgeCatalog(Path("knowledge/index"), Path("knowledge/sources.json")),
+)
 app.dependency_overrides[get_job_repository] = lambda: test_repository
 app.dependency_overrides[get_triage_graph_runner] = lambda: test_graph_runner
 app.dependency_overrides[get_job_runtime] = lambda: test_runtime
 app.dependency_overrides[get_auth_service] = lambda: test_auth
+app.dependency_overrides[get_action_service] = lambda: test_actions
+app.dependency_overrides[get_workflow_service] = lambda: test_workflows
 app.dependency_overrides[get_settings] = lambda: test_settings
 
 client = TestClient(app)
@@ -57,7 +83,7 @@ def test_health_and_readiness() -> None:
     assert client.get("/healthz").status_code == 200
     ready = client.get("/readyz")
     assert ready.status_code == 200
-    assert ready.json()["dependencies"]["scenario_count"] == 3
+    assert ready.json()["dependencies"]["scenario_count"] == 5
     assert ready.json()["dependencies"]["sqlite"] == "ready"
     assert ready.json()["dependencies"]["model"] == "mock"
     assert ready.json()["dependencies"]["langsmith"] == "disabled"
@@ -141,6 +167,144 @@ def test_same_alert_can_be_analyzed_again_and_rerun_is_versioned() -> None:
     assert rerun.json()["case_id"] == first.json()["case_id"]
     assert rerun.json()["parent_job_id"] == first.json()["job_id"]
     assert rerun.json()["analysis_version"] == 2
+
+
+def test_job_can_bind_only_an_active_immutable_workflow_version() -> None:
+    template = client.get("/api/v1/workflows/templates").json()[0]
+    created = client.post(
+        f"/api/v1/workflows/{template['template_id']}/versions",
+        json={"config": template["default_config"]},
+        headers=CSRF_HEADERS,
+    )
+    assert created.status_code == 201
+    workflow_version_id = created.json()["workflow_version_id"]
+
+    draft_job = client.post(
+        "/api/v1/triage/jobs",
+        json={
+            "alert_ref": {"source": "mock-xdr", "external_id": "A-TRI-002"},
+            "options": {"workflow_version_id": workflow_version_id},
+        },
+        headers=CSRF_HEADERS,
+    )
+    assert draft_job.status_code == 422
+
+    assert (
+        client.post(
+            f"/api/v1/workflows/versions/{workflow_version_id}/validate",
+            headers=CSRF_HEADERS,
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            f"/api/v1/workflows/versions/{workflow_version_id}/activate",
+            headers=CSRF_HEADERS,
+        ).status_code
+        == 200
+    )
+
+    active_job = client.post(
+        "/api/v1/triage/jobs",
+        json={
+            "alert_ref": {"source": "mock-xdr", "external_id": "A-TRI-002"},
+            "options": {"workflow_version_id": workflow_version_id},
+        },
+        headers=CSRF_HEADERS,
+    )
+    assert active_job.status_code == 202
+    assert active_job.json()["workflow_version_id"] == workflow_version_id
+
+    missing_job = client.post(
+        "/api/v1/triage/jobs",
+        json={
+            "alert_ref": {"source": "mock-xdr", "external_id": "A-TRI-002"},
+            "options": {"workflow_version_id": "wfv_missing"},
+        },
+        headers=CSRF_HEADERS,
+    )
+    assert missing_job.status_code == 404
+
+
+def test_response_action_api_enforces_four_eyes_and_full_audit_lifecycle() -> None:
+    accepted = client.post(
+        "/api/v1/triage/jobs",
+        json={"alert_ref": {"source": "mock-xdr", "external_id": "A-SUP-001"}},
+        headers=CSRF_HEADERS,
+    )
+    assert accepted.status_code == 202
+    job_id = accepted.json()["job_id"]
+    assert wait_for_terminal(job_id)["status"] == "SUCCEEDED"
+
+    proposed = client.post(
+        "/api/v1/actions",
+        json={"job_id": job_id, "proposal_index": 0},
+        headers={**CSRF_HEADERS, "Idempotency-Key": "api-action-lifecycle"},
+    )
+    assert proposed.status_code == 201
+    action_id = proposed.json()["action_id"]
+    assert proposed.json()["status"] == "PROPOSED"
+
+    dry_run = client.post(f"/api/v1/actions/{action_id}/dry-run", headers=CSRF_HEADERS)
+    assert dry_run.status_code == 200
+    assert dry_run.json()["status"] == "PENDING_APPROVAL"
+    self_approval = client.post(
+        f"/api/v1/actions/{action_id}/approve",
+        json={"comment": "self approval must fail"},
+        headers=CSRF_HEADERS,
+    )
+    assert self_approval.status_code == 403
+
+    created_user = client.post(
+        "/api/v1/admin/users",
+        json={
+            "username": "api-approver",
+            "password": "correct-horse-approval-staple",
+            "role": "approver",
+        },
+        headers=CSRF_HEADERS,
+    )
+    assert created_user.status_code == 201
+
+    approver_client = TestClient(app)
+    login = approver_client.post(
+        "/api/v1/auth/login",
+        json={
+            "username": "api-approver",
+            "password": "correct-horse-approval-staple",
+        },
+    )
+    assert login.status_code == 200
+    approver_csrf = {"X-CSRF-Token": approver_client.cookies.get("ssa_csrf") or ""}
+    approved = approver_client.post(
+        f"/api/v1/actions/{action_id}/approve",
+        json={"comment": "independent approval"},
+        headers=approver_csrf,
+    )
+    assert approved.json()["status"] == "APPROVED"
+    executed = approver_client.post(
+        f"/api/v1/actions/{action_id}/execute", headers=approver_csrf
+    )
+    assert executed.json()["status"] == "SUCCEEDED"
+    verified = approver_client.post(
+        f"/api/v1/actions/{action_id}/verify", headers=approver_csrf
+    )
+    assert verified.json()["status"] == "VERIFIED"
+    rolled_back = approver_client.post(
+        f"/api/v1/actions/{action_id}/rollback", headers=approver_csrf
+    )
+    assert rolled_back.json()["status"] == "ROLLED_BACK"
+
+    assert client.get(f"/api/v1/actions/{action_id}").json()["status"] == "ROLLED_BACK"
+    assert client.get("/api/v1/actions", params={"job_id": job_id}).json()
+    events = client.get(f"/api/v1/actions/{action_id}/events")
+    assert events.status_code == 200
+    assert [item["event_type"] for item in events.json()][-3:] == [
+        "action_execution_succeeded",
+        "action_verified",
+        "action_rolled_back",
+    ]
+    assert client.get("/api/v1/actions/act_missing").status_code == 404
 
 
 def test_idempotency_key_cannot_be_reused_for_different_request() -> None:

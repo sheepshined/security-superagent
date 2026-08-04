@@ -4,6 +4,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.domain.enums import (
+    ActionStatus,
     FactType,
     JobStatus,
     ModelHealth,
@@ -12,6 +13,7 @@ from app.domain.enums import (
     ToolRisk,
     UserRole,
     Verdict,
+    WorkflowVersionStatus,
 )
 
 
@@ -201,6 +203,28 @@ class InvestigationTrace(StrictModel):
     ]
 
 
+class AgentReport(StrictModel):
+    agent: Literal["network_agent", "endpoint_agent", "identity_agent", "knowledge_agent"]
+    objective: str = Field(min_length=1, max_length=2000)
+    status: Literal["completed", "partial", "failed"]
+    evidence_ids: list[OpaqueId] = Field(default_factory=list)
+    citation_ids: list[OpaqueId] = Field(default_factory=list)
+    observations: list[str] = Field(default_factory=list)
+    unknowns: list[str] = Field(default_factory=list)
+    tool_calls: int = Field(ge=0, le=12)
+    started_at: datetime
+    completed_at: datetime
+
+
+class EvidenceConflict(StrictModel):
+    conflict_id: OpaqueId
+    topic: str = Field(min_length=1, max_length=512)
+    evidence_ids: list[OpaqueId] = Field(min_length=2)
+    statements: list[str] = Field(min_length=2)
+    status: Literal["unresolved", "resolved_as_authorized_activity", "resolved_as_threat"]
+    resolution: str = Field(min_length=1, max_length=2000)
+
+
 class TriageResult(StrictModel):
     job_id: OpaqueId
     case_id: OpaqueId
@@ -219,8 +243,8 @@ class TriageResult(StrictModel):
     investigation: InvestigationTrace | None = None
     model_health: ModelHealth = ModelHealth.NOT_CONFIGURED
     degraded_reason: str | None = Field(default=None, max_length=1000)
-    agent_reports: list[dict[str, Any]] = Field(default_factory=list)
-    conflicts: list[dict[str, Any]] = Field(default_factory=list)
+    agent_reports: list[AgentReport] = Field(default_factory=list)
+    conflicts: list[EvidenceConflict] = Field(default_factory=list)
     replan_history: list[ReplanRequest] = Field(default_factory=list)
     completed_at: datetime = Field(default_factory=utc_now)
 
@@ -320,3 +344,110 @@ class UserPatch(StrictModel):
     role: UserRole | None = None
     is_active: bool | None = None
     password: str | None = Field(default=None, min_length=12, max_length=256)
+
+
+class ToolDescriptor(StrictModel):
+    name: str = Field(min_length=1, max_length=128)
+    description: str = Field(min_length=1, max_length=1000)
+    input_schema: dict[str, Any]
+    risk_level: ToolRisk
+    allowed_roles: list[UserRole] = Field(min_length=1)
+    timeout_seconds: int = Field(ge=1, le=120)
+    side_effects: bool
+    requires_approval: bool
+    idempotency_strategy: Literal["read_only", "explicit_key", "plan_hash"]
+
+
+class ActionProposalRequest(StrictModel):
+    job_id: OpaqueId
+    proposal_index: int = Field(default=0, ge=0, le=20)
+
+
+class ActionDecisionRequest(StrictModel):
+    comment: str = Field(default="", max_length=1000)
+
+
+class ActionApproval(StrictModel):
+    approval_id: OpaqueId
+    reviewer_id: OpaqueId
+    reviewer_username: str = Field(min_length=1, max_length=128)
+    decision: Literal["approved", "rejected"]
+    comment: str = Field(default="", max_length=1000)
+    decided_at: datetime
+
+
+class ResponseActionView(StrictModel):
+    action_id: OpaqueId
+    job_id: OpaqueId
+    tool_name: str = Field(min_length=1, max_length=128)
+    target: OpaqueId
+    scope: dict[str, Any] = Field(default_factory=dict)
+    reason: str = Field(min_length=1, max_length=2000)
+    expected_effect: str = Field(min_length=1, max_length=2000)
+    rollback: str = Field(min_length=1, max_length=2000)
+    risk_level: ToolRisk
+    status: ActionStatus
+    plan_hash: str = Field(min_length=64, max_length=64)
+    requested_by: OpaqueId
+    requested_by_username: str = Field(min_length=1, max_length=128)
+    approvals: list[ActionApproval] = Field(default_factory=list)
+    dry_run_result: dict[str, Any] | None = None
+    execution_result: dict[str, Any] | None = None
+    verification_result: dict[str, Any] | None = None
+    expires_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+
+class ActionAuditEvent(StrictModel):
+    event_id: int = Field(ge=1)
+    action_id: OpaqueId
+    event_type: str = Field(min_length=1, max_length=128)
+    from_status: ActionStatus | None = None
+    to_status: ActionStatus
+    actor_id: OpaqueId
+    occurred_at: datetime
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowConfig(StrictModel):
+    node_enabled: dict[str, bool] = Field(default_factory=dict)
+    model: str = Field(default="deepseek", min_length=1, max_length=128)
+    node_timeout_seconds: int = Field(default=30, ge=5, le=120)
+    retries: int = Field(default=1, ge=0, le=2)
+    max_tool_calls: int = Field(default=8, ge=1, le=12)
+    max_replans: int = Field(default=1, ge=0, le=1)
+    agents: list[str] = Field(default_factory=list, max_length=8)
+    tool_allowlist: list[str] = Field(default_factory=list, max_length=32)
+    knowledge_source_ids: list[str] = Field(default_factory=list, max_length=64)
+
+
+class WorkflowVersionCreate(StrictModel):
+    config: WorkflowConfig
+
+
+class WorkflowTemplateView(StrictModel):
+    template_id: OpaqueId
+    name: str = Field(min_length=1, max_length=256)
+    description: str = Field(min_length=1, max_length=2000)
+    fixed_nodes: list[str]
+    configurable_nodes: list[str]
+    default_config: WorkflowConfig
+
+
+class WorkflowVersionView(StrictModel):
+    workflow_version_id: OpaqueId
+    template_id: OpaqueId
+    version_number: int = Field(ge=1)
+    config: WorkflowConfig
+    config_hash: str = Field(min_length=64, max_length=64)
+    status: WorkflowVersionStatus
+    created_by: OpaqueId
+    created_at: datetime
+    activated_at: datetime | None = None
+
+
+class WorkflowValidationResult(StrictModel):
+    valid: bool
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)

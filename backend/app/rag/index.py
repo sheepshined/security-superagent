@@ -252,9 +252,7 @@ class KnowledgeIndexManager:
                             "source_uri": item.source_uri,
                             "version": item.version,
                             "content_hash": item.content_hash,
-                            "access_labels": json.dumps(
-                                item.access_labels, ensure_ascii=False
-                            ),
+                            "access_labels": json.dumps(item.access_labels, ensure_ascii=False),
                         }
                         for item in batch
                     ],

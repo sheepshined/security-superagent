@@ -16,6 +16,7 @@ dependencies = [
   "langgraph>=1.2,<2",
   "langgraph-checkpoint-sqlite>=3.1,<4",
   "langsmith>=0.10,<1",
+  "mcp>=1.28.1,<2",
   "orjson>=3.11.5,<4",
   "pydantic>=2.11,<3",
   "pydantic-settings>=2.10,<3",
@@ -26,6 +27,7 @@ dependencies = [
 dev = [
   "pytest>=8.4,<9",
   "pytest-asyncio>=1.1,<2",
+  "pytest-cov>=7,<8",
   "ruff>=0.12,<1",
 ]
 ai = [
@@ -51,3 +53,12 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.coverage.run]
+source = ["backend/app"]
+omit = ["backend/app/rag/cli.py"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true

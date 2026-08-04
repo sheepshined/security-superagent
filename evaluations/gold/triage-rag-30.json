@@ -1,0 +1,86 @@
+{
+  "version": "1.0",
+  "review_status": "pending_user_review",
+  "cases": [
+    {
+      "case_id": "GOLD-TRI-001",
+      "external_id": "A-TRI-001",
+      "expected_verdict": "true_positive",
+      "key_evidence_ids": ["ev_tri_001_network", "ev_tri_001_process", "ev_tri_001_identity"],
+      "citation_document_any_of": ["mitre-attack-t1021-002", "mitre-attack-t1059-001", "mitre-attack-t1078"],
+      "expected_action_tools": ["edr.isolate_host"],
+      "prompts": [
+        "Assess the complete SMB/RDP lateral movement chain.",
+        "Does endpoint activity corroborate the east-west traffic?",
+        "Does identity evidence support account compromise?",
+        "Map the observed behavior to traceable ATT&CK context.",
+        "Identify missing facts before proposing containment.",
+        "Return an evidence-first Chinese-language analyst conclusion."
+      ]
+    },
+    {
+      "case_id": "GOLD-TRI-002",
+      "external_id": "A-TRI-002",
+      "expected_verdict": "false_positive",
+      "key_evidence_ids": ["ev_tri_002_allowlist", "ev_tri_002_change"],
+      "citation_document_any_of": ["playbook-lateral-movement-response", "mitre-attack-t1021-002"],
+      "expected_action_tools": [],
+      "prompts": [
+        "Assess whether the scanner activity is authorized.",
+        "Use asset and change records as potential counter-evidence.",
+        "Determine whether containment is justified.",
+        "Explain why attack-like traffic can still be benign.",
+        "Check the approved maintenance window and allowlist.",
+        "Return a concise auditable false-positive assessment."
+      ]
+    },
+    {
+      "case_id": "GOLD-TRI-003",
+      "external_id": "A-TRI-003",
+      "expected_verdict": "needs_review",
+      "key_evidence_ids": ["ev_tri_003_network", "ev_tri_003_edr_gap"],
+      "citation_document_any_of": ["playbook-lateral-movement-response", "mitre-attack-t1078"],
+      "expected_action_tools": [],
+      "prompts": [
+        "Assess the outbound alert with unavailable endpoint telemetry.",
+        "List the evidence gap that prevents confirmation.",
+        "Do not infer the initiating process without telemetry.",
+        "Determine whether automatic response is safe.",
+        "Describe the next read-only evidence collection step.",
+        "Return needs-review with bounded confidence."
+      ]
+    },
+    {
+      "case_id": "GOLD-SUP-001",
+      "external_id": "A-SUP-001",
+      "expected_verdict": "true_positive",
+      "key_evidence_ids": ["ev_sup_001_network", "ev_sup_001_process", "ev_sup_001_identity"],
+      "citation_document_any_of": ["mitre-attack-t1021-002", "mitre-attack-t1059-001", "mitre-attack-t1078"],
+      "expected_action_tools": ["edr.isolate_host"],
+      "prompts": [
+        "Build the cross-domain finance lateral movement chain.",
+        "Merge Network, Endpoint, and Identity Agent reports.",
+        "Verify that no approved change explains the behavior.",
+        "Map SMB, WinRM, PowerShell, and token elevation evidence.",
+        "Propose only a dry-run response requiring approval.",
+        "Return the complete SuperAgent audit view."
+      ]
+    },
+    {
+      "case_id": "GOLD-SUP-002",
+      "external_id": "A-SUP-002",
+      "expected_verdict": "false_positive",
+      "key_evidence_ids": ["ev_sup_002_network", "ev_sup_002_process", "ev_sup_002_identity", "ev_sup_002_change"],
+      "citation_document_any_of": ["mitre-attack-t1059-001", "mitre-attack-t1078", "cn-cii-security-regulation-operations"],
+      "expected_action_tools": [],
+      "prompts": [
+        "Preserve the conflict between suspicious WinRM and approved maintenance.",
+        "Compare the patch process with identity and change evidence.",
+        "Determine whether the privileged session was authorized.",
+        "Explain why automatic isolation must remain blocked.",
+        "Show the conflict and its evidence-backed resolution.",
+        "Return a SuperAgent false-positive or review-safe conclusion."
+      ]
+    }
+  ]
+}

@@ -210,6 +210,16 @@ class JobRepository:
                 raise JobNotFoundError(job_id)
             return self._to_view(row)
 
+    def get_by_trace_id(self, trace_id: str) -> JobView:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM triage_jobs WHERE trace_id = ?",
+                (trace_id,),
+            ).fetchone()
+            if row is None:
+                raise JobNotFoundError(trace_id)
+            return self._to_view(row)
+
     def get_request(self, job_id: str) -> TriageJobRequest:
         with self._lock:
             row = self._connection.execute(

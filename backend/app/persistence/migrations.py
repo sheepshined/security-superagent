@@ -3,7 +3,7 @@ from collections.abc import Callable
 
 from app.domain.models import utc_now
 
-LATEST_SCHEMA_VERSION = 3
+LATEST_SCHEMA_VERSION = 4
 
 
 def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
@@ -179,6 +179,85 @@ def _create_auth_tables(connection: sqlite3.Connection) -> None:
     )
 
 
+def _create_response_and_workflow_tables(connection: sqlite3.Connection) -> None:
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS response_actions (
+            action_id TEXT PRIMARY KEY,
+            job_id TEXT NOT NULL REFERENCES triage_jobs(job_id),
+            tool_name TEXT NOT NULL,
+            target TEXT NOT NULL,
+            scope_json TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            expected_effect TEXT NOT NULL,
+            rollback TEXT NOT NULL,
+            risk_level TEXT NOT NULL,
+            status TEXT NOT NULL,
+            plan_hash TEXT NOT NULL,
+            request_hash TEXT NOT NULL,
+            idempotency_key TEXT,
+            requested_by TEXT NOT NULL,
+            requested_by_username TEXT NOT NULL,
+            dry_run_json TEXT,
+            execution_json TEXT,
+            verification_json TEXT,
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_response_actions_idempotency
+            ON response_actions(idempotency_key) WHERE idempotency_key IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_response_actions_job
+            ON response_actions(job_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_response_actions_status
+            ON response_actions(status, expires_at);
+
+        CREATE TABLE IF NOT EXISTS action_approvals (
+            approval_id TEXT PRIMARY KEY,
+            action_id TEXT NOT NULL REFERENCES response_actions(action_id),
+            reviewer_id TEXT NOT NULL,
+            reviewer_username TEXT NOT NULL,
+            decision TEXT NOT NULL,
+            comment TEXT NOT NULL DEFAULT '',
+            decided_at TEXT NOT NULL,
+            UNIQUE(action_id, reviewer_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS action_audit_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action_id TEXT NOT NULL REFERENCES response_actions(action_id),
+            event_type TEXT NOT NULL,
+            from_status TEXT,
+            to_status TEXT NOT NULL,
+            actor_id TEXT NOT NULL,
+            occurred_at TEXT NOT NULL,
+            data_json TEXT NOT NULL DEFAULT '{}'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_action_events_action
+            ON action_audit_events(action_id, event_id);
+
+        CREATE TABLE IF NOT EXISTS workflow_versions (
+            workflow_version_id TEXT PRIMARY KEY,
+            template_id TEXT NOT NULL,
+            version_number INTEGER NOT NULL CHECK(version_number >= 1),
+            config_json TEXT NOT NULL,
+            config_hash TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            activated_at TEXT,
+            UNIQUE(template_id, version_number),
+            UNIQUE(template_id, config_hash)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_workflow_versions_status
+            ON workflow_versions(template_id, status, version_number);
+        """
+    )
+
+
 Migration = tuple[int, str, Callable[[sqlite3.Connection], None]]
 
 
@@ -205,6 +284,8 @@ def migrate(connection: sqlite3.Connection) -> None:
 
     _create_auth_tables(connection)
     _record(connection, 3, "local_rbac_sessions")
+    _create_response_and_workflow_tables(connection)
+    _record(connection, 4, "controlled_response_and_workflow_versions")
     connection.commit()
 
     version = connection.execute(

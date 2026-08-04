@@ -235,10 +235,7 @@ class KnowledgeParser:
                 title = f"ATT&CK relationship: {source_name} -> {target_name}"
                 description = str(item.get("description", ""))
                 relationship_type = item.get("relationship_type", "relates-to")
-                body = (
-                    f"{source_name} {relationship_type} {target_name}. "
-                    f"{description}"
-                )
+                body = f"{source_name} {relationship_type} {target_name}. {description}"
             else:
                 title = f"{external_id} - {item.get('name', object_type)}".strip(" -")
                 body = str(item.get("description", item.get("name", "")))
@@ -252,8 +249,7 @@ class KnowledgeParser:
                 self._base_document(
                     source,
                     document_id=(
-                        f"{source.source_id}-"
-                        f"{_safe_name(external_id or str(item.get('id')))}"
+                        f"{source.source_id}-{_safe_name(external_id or str(item.get('id')))}"
                     ),
                     title=title,
                     content=body,

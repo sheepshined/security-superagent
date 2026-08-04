@@ -1,0 +1,65 @@
+skill:
+  id: "lateral-movement-investigation"
+  version: "1.0.0"
+  compatibility:
+    application: "security-superagent"
+    application_version: ">=0.1.0,<1.0.0"
+    alert_schema: "1.0"
+    result_schema: "1.0"
+  workflow:
+    template_id: "security_triage_controlled_v1"
+    strategy: "plan_execute_verify_replan"
+    max_replans: 1
+    max_react_iterations: 3
+    max_tool_calls: 8
+    hard_timeout_seconds: 120
+    fixed_nodes:
+      - "load_alert"
+      - "critic_verify"
+      - "policy_finalize"
+      - "response_safety_gate"
+    agents:
+      - "network_agent"
+      - "endpoint_agent"
+      - "identity_agent"
+      - "knowledge_agent"
+  prompt: "references/prompt.md"
+  output_schema: "references/result.schema.json"
+  allowed_tools:
+    investigation:
+      - "query_network_context"
+      - "query_endpoint_context"
+      - "query_identity_context"
+      - "search_security_knowledge"
+    response_proposal:
+      - "edr.isolate_host"
+      - "iam.disable_account"
+      - "network.block_indicator"
+  knowledge_scope:
+    access_labels:
+      - "public"
+      - "synthetic"
+    source_ids:
+      - "mitre-attack-enterprise"
+      - "cwe-top-25"
+      - "cisa-kev"
+      - "sigma-lateral-movement"
+      - "cn-cybersecurity-law"
+      - "cn-data-security-law"
+      - "cn-personal-information-protection-law"
+      - "cn-network-data-security-regulation"
+      - "cn-cii-security-regulation"
+  scenarios:
+    - "SUP-001"
+    - "SUP-002"
+  evaluation_ids:
+    - "eval-sup-001-attack-chain"
+    - "eval-sup-002-authorized-conflict"
+  mcp:
+    optional: true
+    transport: "streamable_http"
+    endpoint: "http://127.0.0.1:8100/mcp"
+    tools:
+      - "knowledge_search"
+      - "alert_context"
+      - "trace_summary"

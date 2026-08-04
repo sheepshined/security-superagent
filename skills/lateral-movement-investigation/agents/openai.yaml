@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lateral Movement Investigation"
+  short_description: "Investigate cross-domain lateral movement safely"
+  default_prompt: "Use $lateral-movement-investigation to investigate this suspected lateral movement alert with auditable evidence."

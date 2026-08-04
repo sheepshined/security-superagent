@@ -7,7 +7,13 @@ def test_mock_xdr_lists_expected_scenarios() -> None:
 
     scenarios = adapter.list_scenarios()
 
-    assert {item.scenario_id for item in scenarios} == {"TRI-001", "TRI-002", "TRI-003"}
+    assert {item.scenario_id for item in scenarios} == {
+        "TRI-001",
+        "TRI-002",
+        "TRI-003",
+        "SUP-001",
+        "SUP-002",
+    }
 
 
 def test_mock_xdr_adds_integrity_hashes() -> None:

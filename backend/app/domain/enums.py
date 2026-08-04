@@ -56,3 +56,23 @@ class UserRole(StrEnum):
     ADMIN = "admin"
     ANALYST = "analyst"
     APPROVER = "approver"
+
+
+class ActionStatus(StrEnum):
+    PROPOSED = "PROPOSED"
+    DRY_RUN_PASSED = "DRY_RUN_PASSED"
+    PENDING_APPROVAL = "PENDING_APPROVAL"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    EXECUTING = "EXECUTING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    VERIFIED = "VERIFIED"
+    ROLLED_BACK = "ROLLED_BACK"
+    EXPIRED = "EXPIRED"
+
+
+class WorkflowVersionStatus(StrEnum):
+    DRAFT = "draft"
+    VALIDATED = "validated"
+    ACTIVE = "active"

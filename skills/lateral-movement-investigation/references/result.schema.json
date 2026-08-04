@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://security-superagent.local/schemas/lateral-movement-result-1.0.json",
+  "title": "Lateral Movement Investigation Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "confidence",
+    "summary",
+    "supporting_evidence_ids",
+    "citation_ids",
+    "unknowns",
+    "agent_reports",
+    "conflicts",
+    "recommended_actions",
+    "model_health"
+  ],
+  "properties": {
+    "verdict": {
+      "enum": ["true_positive", "false_positive", "needs_review"]
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "supporting_evidence_ids": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "citation_ids": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "agent_reports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["agent", "status", "evidence_ids", "observations", "unknowns"],
+        "properties": {
+          "agent": {
+            "enum": ["network_agent", "endpoint_agent", "identity_agent", "knowledge_agent"]
+          },
+          "status": {"enum": ["completed", "partial", "failed"]},
+          "evidence_ids": {"type": "array", "items": {"type": "string"}},
+          "observations": {"type": "array", "items": {"type": "string"}},
+          "unknowns": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["topic", "evidence_ids", "status", "resolution"],
+        "properties": {
+          "topic": {"type": "string"},
+          "evidence_ids": {"type": "array", "minItems": 2, "items": {"type": "string"}},
+          "status": {
+            "enum": ["unresolved", "resolved_as_authorized_activity", "resolved_as_threat"]
+          },
+          "resolution": {"type": "string"}
+        }
+      }
+    },
+    "recommended_actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tool_name", "target", "dry_run", "requires_approval"],
+        "properties": {
+          "tool_name": {
+            "enum": ["edr.isolate_host", "iam.disable_account", "network.block_indicator"]
+          },
+          "target": {"type": "string", "minLength": 1},
+          "dry_run": {"const": true},
+          "requires_approval": {"const": true}
+        }
+      }
+    },
+    "model_health": {
+      "enum": ["HEALTHY", "DEGRADED", "NOT_CONFIGURED"]
+    }
+  }
+}

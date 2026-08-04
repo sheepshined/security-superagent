@@ -10,6 +10,7 @@ from app.api.dependencies import (
     get_job_repository,
     get_job_runtime,
     get_triage_graph_runner,
+    get_workflow_service,
     require_csrf,
 )
 from app.domain.enums import JobStatus
@@ -28,11 +29,17 @@ from app.runtime.jobs import (
     JobRuntime,
     ResultNotReadyError,
 )
+from app.services.workflows import (
+    WorkflowNotFoundError,
+    WorkflowService,
+    WorkflowValidationError,
+)
 
 router = APIRouter(tags=["triage"])
 RuntimeDependency = Annotated[JobRuntime, Depends(get_job_runtime)]
 RepositoryDependency = Annotated[JobRepository, Depends(get_job_repository)]
 GraphDependency = Annotated[TriageGraphRunner, Depends(get_triage_graph_runner)]
+WorkflowServiceDependency = Annotated[WorkflowService, Depends(get_workflow_service)]
 
 
 @router.post(
@@ -44,8 +51,19 @@ GraphDependency = Annotated[TriageGraphRunner, Depends(get_triage_graph_runner)]
 async def create_triage_job(
     request: TriageJobRequest,
     runtime: RuntimeDependency,
+    workflows: WorkflowServiceDependency,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobAccepted:
+    if request.options.workflow_version_id:
+        try:
+            workflows.require_active(request.options.workflow_version_id)
+        except WorkflowNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="workflow version not found") from exc
+        except WorkflowValidationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=exc.result.model_dump(mode="json"),
+            ) from exc
     await runtime.start()
     try:
         accepted, _ = runtime.submit(request, idempotency_key=idempotency_key)

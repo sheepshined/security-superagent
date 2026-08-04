@@ -173,6 +173,54 @@ def test_triage_graph_runs_all_nodes_and_persists_checkpoint() -> None:
     assert checkpoint["result"].job_id == "job_graph"
 
 
+def test_superagent_lateral_chain_merges_specialist_reports() -> None:
+    runner = make_runner()
+
+    result = runner.run(
+        job_id="job_sup_001",
+        case_id="case_sup_001",
+        trace_id="trace_sup_001",
+        alert_ref=AlertRef(source="mock-xdr", external_id="A-SUP-001"),
+        data_classification=DataClassification.SYNTHETIC,
+    )
+
+    assert result.verdict == Verdict.TRUE_POSITIVE
+    assert result.requires_superagent is True
+    assert {report.agent for report in result.agent_reports} == {
+        "network_agent",
+        "endpoint_agent",
+        "identity_agent",
+        "knowledge_agent",
+    }
+    assert all(report.status == "completed" for report in result.agent_reports)
+    assert result.conflicts == []
+    assert [action.tool_name for action in result.recommended_actions] == ["edr.isolate_host"]
+
+
+def test_superagent_conflict_is_preserved_and_blocks_high_risk_action() -> None:
+    runner = make_runner()
+
+    result = runner.run(
+        job_id="job_sup_002",
+        case_id="case_sup_002",
+        trace_id="trace_sup_002",
+        alert_ref=AlertRef(source="mock-xdr", external_id="A-SUP-002"),
+        data_classification=DataClassification.SYNTHETIC,
+    )
+
+    assert result.verdict == Verdict.FALSE_POSITIVE
+    assert result.recommended_actions == []
+    assert len(result.conflicts) == 1
+    assert result.conflicts[0].status == "resolved_as_authorized_activity"
+    assert result.investigation is not None
+    assert result.investigation.critic.conflicts
+    assert set(result.conflicts[0].evidence_ids) >= {
+        "ev_sup_002_network",
+        "ev_sup_002_change",
+        "ev_sup_002_identity",
+    }
+
+
 def test_model_assessment_is_structured_grounded_and_policy_checked() -> None:
     runner = make_runner(with_model=True)
 

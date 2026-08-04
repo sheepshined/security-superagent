@@ -6,6 +6,7 @@ from app.adapters.protocols import XDRAdapter
 from app.agents.triage.tools import create_knowledge_search_tool
 from app.domain.models import Citation, Evidence, NormalizedAlert, StrictModel
 from app.rag.hybrid import HybridRetriever
+from app.tools.registry import DEFAULT_TOOL_REGISTRY
 
 
 class InvestigationToolDeniedError(PermissionError):
@@ -30,14 +31,7 @@ class InvestigationToolResult:
 class ReadOnlyInvestigationToolRegistry:
     """Hard allowlist for evidence gathering; no response/write tools are registered."""
 
-    ALLOWED_TOOLS = frozenset(
-        {
-            "query_network_context",
-            "query_endpoint_context",
-            "query_identity_context",
-            "search_security_knowledge",
-        }
-    )
+    ALLOWED_TOOLS = DEFAULT_TOOL_REGISTRY.read_only_names
 
     def __init__(self, xdr: XDRAdapter, retriever: HybridRetriever) -> None:
         self._xdr = xdr
