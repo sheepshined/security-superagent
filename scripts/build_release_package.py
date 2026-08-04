@@ -20,11 +20,14 @@ FORBIDDEN_PARTS = {
     ".venv",
     "node_modules",
     "__pycache__",
-    "outputs",
-    "runtime",
-    "test-tmp",
-    "artifact-work",
 }
+FORBIDDEN_PREFIXES = (
+    "data/runtime/",
+    "data/test-tmp/",
+    "data/artifact-work/",
+    "knowledge/index/",
+    "outputs/",
+)
 FORBIDDEN_SUFFIXES = {
     ".db",
     ".onnx",
@@ -63,6 +66,8 @@ def _path_violation(relative_path: str) -> str | None:
     normalized = PurePosixPath(relative_path)
     if relative_path in FORBIDDEN_TRACKED_PATHS:
         return "forbidden tracked file"
+    if relative_path.startswith(FORBIDDEN_PREFIXES):
+        return "forbidden runtime or cache directory"
     if any(part in FORBIDDEN_PARTS for part in normalized.parts):
         return "forbidden runtime or cache directory"
     if normalized.suffix.lower() in FORBIDDEN_SUFFIXES:

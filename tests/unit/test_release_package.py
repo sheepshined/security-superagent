@@ -7,6 +7,7 @@ def test_release_path_gate_rejects_secrets_runtime_and_models() -> None:
     assert _path_violation("models/embedding.onnx") is not None
     assert _path_violation("frontend/node_modules/package/index.js") is not None
     assert _path_violation("backend/app/main.py") is None
+    assert _path_violation("backend/app/runtime/jobs.py") is None
     assert _path_violation(".env.example") is None
 
 
