@@ -28,9 +28,12 @@ frontend/playwright-report/
 
 data/runtime/
 data/test-tmp/
+data/artifact-work/
 knowledge/index/
 security-superagent-data/
 backups/
+outputs/
+release/
 *.sqlite3
 *.db
 *.onnx
