@@ -46,7 +46,14 @@ jobs:
         run: python -m ruff check backend tests scripts
 
       - name: Backend tests
-        run: python -m pytest --cov=backend/app --cov-report=term-missing
+        run: >-
+          python -m pytest
+          --cov=backend/app
+          --cov-report=term-missing
+          --cov-report=json:coverage.json
+
+      - name: Enforce critical security branch coverage
+        run: python scripts/check_critical_coverage.py coverage.json
 
       - name: Offline release-gate evaluation
         run: python -m app.evaluation --summary-only

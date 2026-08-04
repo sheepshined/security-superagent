@@ -43,3 +43,7 @@ def test_high_risk_action_is_dry_run_and_requires_approval() -> None:
     assert action.requires_approval is True
     assert result.citations
     assert any("attack.mitre.org" in citation.source_uri for citation in result.citations)
+
+
+def test_policy_defaults_to_review_without_a_supported_conclusion() -> None:
+    assert TriageService._decide_verdict(set(), set()) == Verdict.NEEDS_REVIEW

@@ -57,6 +57,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.coverage.run]
 source = ["backend/app"]
 omit = ["backend/app/rag/cli.py"]
+branch = true
 
 [tool.coverage.report]
 fail_under = 85
