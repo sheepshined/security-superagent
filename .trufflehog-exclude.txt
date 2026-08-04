@@ -4,6 +4,7 @@
 ^/workspace/\.ruff_cache/
 ^/workspace/\.coverage$
 ^/workspace/\.env$
+^/workspace/\.tmp/
 ^/workspace/data/
 ^/workspace/knowledge/index/
 ^/workspace/frontend/node_modules/

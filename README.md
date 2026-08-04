@@ -1,62 +1,87 @@
 # Security SuperAgent
 
-> Agent 运行时已升级为 LangGraph 状态图，使用 LangChain 完成受控知识工具调用和
-> DeepSeek 结构化输出解析，并支持默认关闭、按数据分级启用的 LangSmith 追踪。
-> 详细设计见 [docs/AGENT_RUNTIME.md](docs/AGENT_RUNTIME.md)。
-> LangGraph 检查点已持久化到本地 SQLite，可通过 `trace_id` 在控制台和 API 中回放。
+面向安全运营告警研判的可审计智能体系统。项目以 FastAPI、LangGraph、LangChain、
+DeepSeek、SQLite、Chroma、React 和 MCP 为技术基线，当前在 Mock XDR 合成数据上
+完成基础任务、进阶任务和标准 SuperAgent 主链路，平台资料到达后通过 Adapter 接入。
 
-基于深信服 AI 安全大模型平台设计的告警研判 Agent、RAG 知识增强与 SuperAgent 跨域调查系统。
+## 当前成果
 
-当前阶段采用 Mock XDR 与合成数据开发，后续通过 Adapter 对接平台云服务。DeepSeek 仅处理合成或脱敏数据。
+- 异步任务、SSE 实时进度、持久化 Checkpoint、Trace 回放和显式幂等。
+- Supervisor 并行调度 Network、Endpoint、Identity 三个专门 Agent，共享 RAG 能力。
+- Plan-Execute-Critic-Replan 混合流程；最多一次真实修订，保留证据冲突和未知项。
+- MITRE ATT&CK、CWE Top 25、CISA KEV、Sigma 和中国官方法规混合检索。
+- BM25 + 多语种 ONNX 向量 + RRF + 规则重排 + 引用完整性校验。
+- 描述符 Tool Registry、固定安全拓扑工作流模板和不可变工作流版本。
+- 高风险响应必须 dry-run、不可变计划哈希、四眼审批、模拟执行和执行回查。
+- 本地 RBAC：管理员、分析员、审批员，Argon2id、HttpOnly Cookie 和 CSRF。
+- 只读 Streamable HTTP MCP：知识搜索、合成告警上下文、最小化 Trace 摘要。
+- `lateral-movement-investigation` Skill v1 与 SUP-001/SUP-002 演示场景。
+- 30 条研判/RAG 金标准草案、50 条 Prompt Injection/越权安全样本。
 
-## 当前里程碑
+## 一键启动
 
-- P1 工程基线：SQLite 版本迁移、本地 RBAC、显式幂等键、异步 Worker、SSE、
-  真实 Plan-Execute-Replan 和模型故障安全降级已经实现。
-- P2 知识库：MITRE ATT&CK、CWE Top 25、CISA KEV、Sigma 与中国官方法规来源
-  已登记；支持下载校验、解析、分块去重、BM25 + ONNX 向量 + RRF、Chroma
-  代际索引和原子切换。离线快照始终作为安全回退。
-- 当前继续实施受控响应、模板化工作流、标准 SuperAgent、MCP 和 Skill。
+1. 从 `.env.example` 复制本地 `.env`，至少设置：
 
-详细计划见 [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md)。
-开发机、Docker E 盘规划和平台边界见 [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md)。
+   - `BOOTSTRAP_ADMIN_USERNAME`
+   - `BOOTSTRAP_ADMIN_PASSWORD`（至少 12 位，不进入 Git）
+   - `DEEPSEEK_API_KEY`
 
-## 目录
-
-```text
-backend/       FastAPI、Agent、RAG、工具和平台适配
-frontend/      React + TypeScript + Ant Design 控制台
-knowledge/     可离线演示的知识快照和构建说明
-tests/         单元、契约、端到端与评测
-deploy/        Docker Compose 与部署配置
-docs/          项目、开发、测试和演示文档
-scripts/       Windows 本地开发脚本
-```
-
-## 安全原则
-
-- 不提交 `.env` 或任何 API Key。
-- DeepSeek 不接收未经批准的真实 XDR 数据。
-- 高风险写动作必须经过 dry-run、策略校验和审批。
-- Agent 不能调用任意 shell、SQL 或通用 HTTP 工具。
-
-## DeepSeek 连通性检查
-
-复制 `.env.example` 为本地 `.env`，只在本机填写 `DEEPSEEK_API_KEY`，然后执行：
+2. 启动服务：
 
 ```powershell
-.\scripts\check-deepseek.ps1
+docker compose -f deploy/compose.yaml up -d --build
 ```
 
-该检查只发送合成测试文本，不会读取或发送 XDR 数据。
+3. 打开 `http://localhost:5173`。后端就绪状态位于
+   `http://localhost:8000/readyz`，MCP 只绑定本机 `127.0.0.1:8100`。
 
-## 知识索引
-
-完整索引使用独立 Compose profile 构建，不占用主演示后端的构建窗口：
+完整索引由独立 profile 构建，成功后才原子切换活动版本：
 
 ```powershell
 docker compose -f deploy/compose.yaml --profile indexer run --rm knowledge-indexer
 ```
 
-索引器先在新代际目录完成下载校验、解析和 Chroma 构建，成功后才原子切换
-`ACTIVE` 指针。任何失败代际都不会替换当前可用索引。
+## 验证
+
+```powershell
+.\.venv\Scripts\ruff.exe check backend tests scripts
+.\.venv\Scripts\python.exe -m pytest --cov --cov-report=term-missing
+.\.venv\Scripts\python.exe -m app.evaluation --summary-only
+.\.venv\Scripts\python.exe scripts\check_mcp.py http://127.0.0.1:8100/mcp
+cd frontend
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run build
+npm.cmd run e2e
+```
+
+当前本地门禁：后端 64 项通过，覆盖率 87.11%；前端 3 项单元/组件测试和
+SUP-001 浏览器 E2E 通过；离线评测 30/30，未授权高风险动作 0。30 条金标准仍需
+用户人工审核，不能将自动一致性结果等同于人工标注完成。
+
+## 安全边界
+
+- DeepSeek 和 LangSmith 只接收合成或已批准脱敏的数据。
+- 模型失败时继续确定性研判并标记 `DEGRADED`，最高只能 `needs_review`。
+- Agent 无任意 shell、SQL 或通用 HTTP 工具；MCP 不暴露写操作。
+- `.env`、数据库、模型、完整索引、缓存和运行日志不进入 Git。
+- Platform Adapter 未通过契约测试前，Mock 演示保持为稳定主链路。
+
+## 文档
+
+- [架构设计](docs/ARCHITECTURE.md)
+- [API 说明](docs/API.md)
+- [开发指南](docs/DEVELOPMENT.md)
+- [测试与验收](docs/TESTING.md)
+- [Docker 部署](docs/DEPLOYMENT.md)
+- [安全设计](docs/SECURITY.md)
+- [演示脚本](docs/DEMO.md)
+- [Agent 运行时](docs/AGENT_RUNTIME.md)
+- [完整项目计划](docs/PROJECT_PLAN.md)
+
+## 当前外部依赖
+
+- 首次登录还需要在本地 `.env` 中补齐管理员初始化变量。
+- Docker Desktop 当前总内存约 4GB；计划配置为 6GB，完整索引构建时建议调整。
+- XDR 平台鉴权、字段、分页、限流、Webhook 和响应接口资料尚未提供。
+- 30 条评测样本需要用户确认，正式录屏前需要确认安全结论表述。
