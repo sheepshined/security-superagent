@@ -44,6 +44,7 @@ class TriageJobRequest(StrictModel):
     alert_ref: AlertRef
     mode: RunMode = RunMode.MOCK
     options: TriageOptions = Field(default_factory=TriageOptions)
+    analyst_query: str = Field(default="", max_length=4000)
 
 
 class Entity(StrictModel):
@@ -186,6 +187,7 @@ class ReActAuditStep(StrictModel):
 
 class InvestigationTrace(StrictModel):
     plan: InvestigationPlan
+    analyst_query: str = Field(default="", max_length=4000)
     plan_executions: list[PlanStepExecution] = Field(default_factory=list)
     critic: CriticReport
     react_steps: list[ReActAuditStep] = Field(default_factory=list, max_length=12)

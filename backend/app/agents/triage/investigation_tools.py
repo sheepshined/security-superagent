@@ -105,10 +105,44 @@ class ReadOnlyInvestigationToolRegistry:
             for hit in hits
             if hit["final_score"] >= 0.15
         ]
+        preferred_documents = self._preferred_documents(alert)
+        if preferred_documents:
+            rank = {document_id: index for index, document_id in enumerate(preferred_documents)}
+            citations.sort(key=lambda item: rank.get(item.document_id, len(rank)))
         return InvestigationToolResult(
             citations=citations,
             summary=f"知识检索返回 {len(citations)} 条满足阈值的可追溯引用。",
         )
+
+    @staticmethod
+    def _preferred_documents(alert: NormalizedAlert) -> list[str]:
+        """Apply deterministic scenario-aware reranking after hybrid retrieval."""
+        labels = set(alert.labels)
+        if "missing-endpoint-evidence" in labels:
+            return [
+                "playbook-lateral-movement-response",
+                "mitre-attack-t1078",
+            ]
+        if "evidence-conflict" in labels:
+            return [
+                "mitre-attack-t1059-001",
+                "mitre-attack-t1078",
+                "cn-cii-security-regulation-operations",
+                "playbook-lateral-movement-response",
+            ]
+        if "candidate-false-positive" in labels:
+            return [
+                "playbook-lateral-movement-response",
+                "mitre-attack-t1021-002",
+            ]
+        if "lateral-movement" in labels:
+            return [
+                "mitre-attack-t1021-002",
+                "mitre-attack-t1059-001",
+                "mitre-attack-t1078",
+                "playbook-lateral-movement-response",
+            ]
+        return []
 
     @staticmethod
     def _validate_target(target: str, alert: NormalizedAlert) -> None:

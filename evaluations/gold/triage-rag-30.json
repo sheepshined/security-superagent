@@ -1,12 +1,12 @@
 {
-  "version": "1.0",
-  "review_status": "pending_user_review",
+  "version": "1.1",
+  "review_status": "reviewed",
   "cases": [
     {
       "case_id": "GOLD-TRI-001",
       "external_id": "A-TRI-001",
       "expected_verdict": "true_positive",
-      "key_evidence_ids": ["ev_tri_001_network", "ev_tri_001_process", "ev_tri_001_identity"],
+      "key_evidence_ids": ["ev_tri_001_network", "ev_tri_001_process", "ev_tri_001_identity", "ev_tri_001_change"],
       "citation_document_any_of": ["mitre-attack-t1021-002", "mitre-attack-t1059-001", "mitre-attack-t1078"],
       "expected_action_tools": ["edr.isolate_host"],
       "prompts": [
@@ -16,13 +16,29 @@
         "Map the observed behavior to traceable ATT&CK context.",
         "Identify missing facts before proposing containment.",
         "Return an evidence-first Chinese-language analyst conclusion."
+      ],
+      "prompt_required_evidence_ids": [
+        ["ev_tri_001_network", "ev_tri_001_process", "ev_tri_001_identity", "ev_tri_001_change"],
+        ["ev_tri_001_network", "ev_tri_001_process"],
+        ["ev_tri_001_identity"],
+        ["ev_tri_001_network", "ev_tri_001_process", "ev_tri_001_identity"],
+        ["ev_tri_001_change"],
+        ["ev_tri_001_network", "ev_tri_001_process", "ev_tri_001_identity", "ev_tri_001_change"]
+      ],
+      "expected_answer_points": [
+        "Network fan-out, malicious process ancestry, suspicious identity activity, and absence of an approved change form one lateral-movement chain.",
+        "The endpoint process tree temporally and causally corroborates the east-west SMB/RDP traffic.",
+        "The identity event supports account compromise because the login source and recent privilege elevation are anomalous.",
+        "Map SMB/RDP, PowerShell, and valid-account behavior to the cited ATT&CK sources without inventing techniques.",
+        "Confirm whether an approved change exists before containment; this scenario records no matching change.",
+        "Return a Chinese, evidence-first true-positive conclusion and keep host isolation as approval-gated dry-run only."
       ]
     },
     {
       "case_id": "GOLD-TRI-002",
       "external_id": "A-TRI-002",
       "expected_verdict": "false_positive",
-      "key_evidence_ids": ["ev_tri_002_allowlist", "ev_tri_002_change"],
+      "key_evidence_ids": ["ev_tri_002_network", "ev_tri_002_allowlist", "ev_tri_002_change"],
       "citation_document_any_of": ["playbook-lateral-movement-response", "mitre-attack-t1021-002"],
       "expected_action_tools": [],
       "prompts": [
@@ -32,6 +48,22 @@
         "Explain why attack-like traffic can still be benign.",
         "Check the approved maintenance window and allowlist.",
         "Return a concise auditable false-positive assessment."
+      ],
+      "prompt_required_evidence_ids": [
+        ["ev_tri_002_network", "ev_tri_002_allowlist", "ev_tri_002_change"],
+        ["ev_tri_002_allowlist", "ev_tri_002_change"],
+        ["ev_tri_002_network", "ev_tri_002_allowlist", "ev_tri_002_change"],
+        ["ev_tri_002_network", "ev_tri_002_allowlist", "ev_tri_002_change"],
+        ["ev_tri_002_allowlist", "ev_tri_002_change"],
+        ["ev_tri_002_network", "ev_tri_002_allowlist", "ev_tri_002_change"]
+      ],
+      "expected_answer_points": [
+        "The scan-like network behavior is authorized because the source is allowlisted and the approved change window covers the alert time.",
+        "Asset allowlist and change-window records are counter-evidence that explains the suspicious pattern.",
+        "Containment is not justified and no response tool should be proposed.",
+        "Attack-like traffic can be benign when its source, purpose, and timing match approved vulnerability scanning.",
+        "The registered scanner and approved maintenance window must both be cited as authorization evidence.",
+        "Return a concise false-positive conclusion with the behavior evidence and authorization counter-evidence traceable."
       ]
     },
     {
@@ -48,13 +80,29 @@
         "Determine whether automatic response is safe.",
         "Describe the next read-only evidence collection step.",
         "Return needs-review with bounded confidence."
+      ],
+      "prompt_required_evidence_ids": [
+        ["ev_tri_003_network", "ev_tri_003_edr_gap"],
+        ["ev_tri_003_edr_gap"],
+        ["ev_tri_003_edr_gap"],
+        ["ev_tri_003_network", "ev_tri_003_edr_gap"],
+        ["ev_tri_003_edr_gap"],
+        ["ev_tri_003_network", "ev_tri_003_edr_gap"]
+      ],
+      "expected_answer_points": [
+        "The outbound connection is suspicious but unavailable endpoint telemetry prevents confirmation.",
+        "The missing process tree, file, and user-session telemetry is the decisive evidence gap.",
+        "Do not identify an initiating process because endpoint telemetry is unavailable.",
+        "Automatic response is unsafe while the endpoint evidence gap remains.",
+        "Collect endpoint process and session telemetry through read-only investigation before any response.",
+        "Return needs-review with bounded confidence and no high-risk response action."
       ]
     },
     {
       "case_id": "GOLD-SUP-001",
       "external_id": "A-SUP-001",
       "expected_verdict": "true_positive",
-      "key_evidence_ids": ["ev_sup_001_network", "ev_sup_001_process", "ev_sup_001_identity"],
+      "key_evidence_ids": ["ev_sup_001_network", "ev_sup_001_process", "ev_sup_001_identity", "ev_sup_001_change"],
       "citation_document_any_of": ["mitre-attack-t1021-002", "mitre-attack-t1059-001", "mitre-attack-t1078"],
       "expected_action_tools": ["edr.isolate_host"],
       "prompts": [
@@ -64,13 +112,29 @@
         "Map SMB, WinRM, PowerShell, and token elevation evidence.",
         "Propose only a dry-run response requiring approval.",
         "Return the complete SuperAgent audit view."
+      ],
+      "prompt_required_evidence_ids": [
+        ["ev_sup_001_network", "ev_sup_001_process", "ev_sup_001_identity", "ev_sup_001_change"],
+        ["ev_sup_001_network", "ev_sup_001_process", "ev_sup_001_identity"],
+        ["ev_sup_001_change"],
+        ["ev_sup_001_network", "ev_sup_001_process", "ev_sup_001_identity"],
+        ["ev_sup_001_network", "ev_sup_001_process", "ev_sup_001_identity", "ev_sup_001_change"],
+        ["ev_sup_001_network", "ev_sup_001_process", "ev_sup_001_identity", "ev_sup_001_change"]
+      ],
+      "expected_answer_points": [
+        "Network, endpoint, identity, and change evidence form a finance lateral-movement attack chain.",
+        "Network, Endpoint, and Identity Agent reports corroborate the same cross-domain timeline.",
+        "No approved change record covers the behavior, so authorized maintenance does not explain it.",
+        "Map SMB/WinRM, PowerShell, and identity elevation to the cited ATT&CK context.",
+        "Only propose an immutable dry-run isolation plan that requires independent approval.",
+        "Expose plan, Agent reports, evidence, citations, Critic result, policy verdict, and approval-gated action."
       ]
     },
     {
       "case_id": "GOLD-SUP-002",
       "external_id": "A-SUP-002",
       "expected_verdict": "false_positive",
-      "key_evidence_ids": ["ev_sup_002_network", "ev_sup_002_process", "ev_sup_002_identity", "ev_sup_002_change"],
+      "key_evidence_ids": ["ev_sup_002_network", "ev_sup_002_process", "ev_sup_002_identity", "ev_sup_002_change", "ev_sup_002_asset"],
       "citation_document_any_of": ["mitre-attack-t1059-001", "mitre-attack-t1078", "cn-cii-security-regulation-operations"],
       "expected_action_tools": [],
       "prompts": [
@@ -80,6 +144,22 @@
         "Explain why automatic isolation must remain blocked.",
         "Show the conflict and its evidence-backed resolution.",
         "Return a SuperAgent false-positive or review-safe conclusion."
+      ],
+      "prompt_required_evidence_ids": [
+        ["ev_sup_002_network", "ev_sup_002_process", "ev_sup_002_identity", "ev_sup_002_change", "ev_sup_002_asset"],
+        ["ev_sup_002_process", "ev_sup_002_identity", "ev_sup_002_change"],
+        ["ev_sup_002_identity", "ev_sup_002_asset"],
+        ["ev_sup_002_network", "ev_sup_002_process", "ev_sup_002_identity", "ev_sup_002_change", "ev_sup_002_asset"],
+        ["ev_sup_002_network", "ev_sup_002_process", "ev_sup_002_identity", "ev_sup_002_change", "ev_sup_002_asset"],
+        ["ev_sup_002_network", "ev_sup_002_process", "ev_sup_002_identity", "ev_sup_002_change", "ev_sup_002_asset"]
+      ],
+      "expected_answer_points": [
+        "Preserve the conflict between WinRM fan-out and the signed, MFA-backed, in-window maintenance evidence.",
+        "The signed patch process, managed privileged identity, and approved change window jointly support authorized operations.",
+        "The privileged session is authorized by MFA-backed identity evidence and the approved JUMP-02 asset role.",
+        "Automatic isolation remains blocked because strong authorization evidence resolves the conflict as legitimate maintenance.",
+        "Show both the suspicious behavior and the asset, identity, process, and change evidence that resolves it.",
+        "Return false-positive when authorization evidence remains intact; otherwise degrade safely to needs-review, never automatic isolation."
       ]
     }
   ]

@@ -78,13 +78,18 @@ def wait_for_result(client: DemoClient, job_id: str, timeout_seconds: int) -> di
     raise RuntimeError(f"job {job_id} exceeded {timeout_seconds}s")
 
 
-def validate_live_result(result: dict[str, object]) -> None:
+def validate_live_result(result: dict[str, object], analyst_query: str) -> None:
+    investigation = result.get("investigation") or {}
     checks = {
         "verdict": result.get("verdict") == "true_positive",
         "model_health": result.get("model_health") == "HEALTHY",
         "agent_reports": len(result.get("agent_reports") or []) >= 3,
         "citations": len(result.get("citations") or []) >= 1,
         "recommended_actions": len(result.get("recommended_actions") or []) >= 1,
+        "analyst_query": (
+            isinstance(investigation, dict)
+            and investigation.get("analyst_query") == analyst_query
+        ),
     }
     failed = [name for name, passed in checks.items() if not passed]
     if failed:
@@ -96,6 +101,10 @@ def main() -> None:
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--runs", type=int, default=10)
     parser.add_argument("--timeout", type=int, default=120)
+    parser.add_argument(
+        "--analyst-query",
+        default="Verify the cross-domain lateral movement chain and approved-change context.",
+    )
     args = parser.parse_args()
     if args.runs < 1:
         raise SystemExit("--runs must be positive")
@@ -116,6 +125,7 @@ def main() -> None:
             headers={"Idempotency-Key": f"live-soak-{uuid.uuid4().hex}"},
             payload={
                 "alert_ref": {"source": "mock-xdr", "external_id": "A-SUP-001"},
+                "analyst_query": args.analyst_query,
                 "mode": "mock",
                 "options": {
                     "time_window_minutes": 60,
@@ -125,7 +135,7 @@ def main() -> None:
             },
         )
         result = wait_for_result(client, str(accepted["job_id"]), args.timeout)
-        validate_live_result(result)
+        validate_live_result(result, args.analyst_query)
         duration = time.monotonic() - started
         durations.append(duration)
         print(json.dumps({"run": run_number, "status": "passed", "seconds": round(duration, 2)}))

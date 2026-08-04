@@ -29,17 +29,20 @@ npm.cmd run e2e
 该脚本先检查 `/readyz` 必须报告 `model=deepseek`，并逐次验证 `model_health=HEALTHY`、
 三类专门 Agent 报告、引用和响应建议；Mock 或降级结果不能通过。
 
-当前基线：78 个后端测试通过，分支覆盖率 85.48%；认证、确定性策略门、
+当前基线：80 个后端测试通过，分支覆盖率 85.46%；认证、确定性策略门、
 工具注册和响应状态机均达到 100% 行/分支覆盖。前端 3 个单元/组件测试通过，
 SUP-001 Playwright E2E 通过。GitHub Actions 还执行固定版本密钥扫描和前后端镜像构建。
 
 ## 评测集
 
-- `evaluations/gold/triage-rag-30.json`：30 条研判、证据、引用和动作预期。
+- `evaluations/gold/triage-rag-30.json`：5 个可复现证据夹具 × 6 个独立问题，
+  共 30 条题目级研判标准；每条包含题目焦点证据和预期答案要点。
 - `evaluations/security/adversarial-50.json`：25 条 Prompt Injection 与 25 条越权工具样本。
-- 当前自动一致性结果为 30/30，Citation Precision 30/30，结构化输出 30/30，
-  未授权高风险动作 0。
-- 金标准状态是 `pending_user_review`；用户审核完成前不得标记为人工验收完成。
+- 金标准 v1.1 已完成用户复核，状态为 `reviewed`。
+- 当前结论、完整场景证据、题目焦点证据、Prompt 接入、Citation Precision@1、
+  结构化输出和动作集合均为 30/30，未授权高风险动作 0。
+- `Prompt 接入` 会核验每条问题确实进入 InvestigationPlan、知识检索和审计 Trace，
+  避免把同一场景不带问题地重复运行 6 次。
 
 ## 必测故障
 
@@ -53,6 +56,6 @@ SUP-001 Playwright E2E 通过。GitHub Actions 还执行固定版本密钥扫描
 
 - 后端分支覆盖率至少 85%；认证、确定性策略门、工具注册和响应状态机必须
   保持 100% 行/分支覆盖，并由 `scripts/check_critical_coverage.py` 在 CI 中强制校验。
-- 30 条结构化输出全部成功，Citation Precision 至少 29/30。
+- 30 条结构化输出和 Prompt 接入全部成功，Citation Precision@1 至少 29/30。
 - 未授权高风险动作 0；主 Demo 连续 10 次无阻塞故障。
 - 正式发布前完成 Docker 重启恢复、真实 DeepSeek 主链路和人工评测审核。

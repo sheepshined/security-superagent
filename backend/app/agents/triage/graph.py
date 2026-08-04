@@ -44,6 +44,7 @@ class TriageGraphState(TypedDict, total=False):
     job_id: str
     case_id: str
     trace_id: str
+    analyst_query: str
     alert_ref: AlertRef
     data_classification: DataClassification
     alert: NormalizedAlert
@@ -136,6 +137,7 @@ class TriageGraphRunner:
         trace_id: str,
         alert_ref: AlertRef,
         data_classification: DataClassification,
+        analyst_query: str = "",
     ) -> TriageResult:
         config = {
             "configurable": {"thread_id": trace_id},
@@ -160,6 +162,7 @@ class TriageGraphRunner:
                     "job_id": job_id,
                     "case_id": case_id,
                     "trace_id": trace_id,
+                    "analyst_query": analyst_query,
                     "alert_ref": alert_ref,
                     "data_classification": data_classification,
                     "evidence": [],
@@ -188,6 +191,7 @@ class TriageGraphRunner:
         trace_id: str,
         alert_ref: AlertRef,
         data_classification: DataClassification,
+        analyst_query: str = "",
         progress_hook: ProgressHook | None = None,
     ) -> TriageResult:
         config = self._run_config(
@@ -214,6 +218,7 @@ class TriageGraphRunner:
                         trace_id=trace_id,
                         alert_ref=alert_ref,
                         data_classification=data_classification,
+                        analyst_query=analyst_query,
                     ),
                     config=config,
                 )
@@ -252,7 +257,10 @@ class TriageGraphRunner:
         }
 
     def _plan_investigation(self, state: TriageGraphState) -> dict[str, Any]:
-        plan = self._planner.create_plan(state["alert"])
+        plan = self._planner.create_plan(
+            state["alert"],
+            state.get("analyst_query", ""),
+        )
         self._notify(
             "plan_created",
             "plan_investigation",
@@ -281,6 +289,7 @@ class TriageGraphRunner:
         execution = self._supervisor.execute(
             plan=state["investigation_plan"],
             alert=state["alert"],
+            analyst_query=state.get("analyst_query", ""),
             progress=progress,
         )
         self._notify(
@@ -374,6 +383,7 @@ class TriageGraphRunner:
                 evidence=state["evidence"],
                 citations=state["citations"],
                 data_classification=state["data_classification"],
+                analyst_query=state.get("analyst_query", ""),
             )
             self._notify(
                 "model_completed",
@@ -489,6 +499,7 @@ class TriageGraphRunner:
         workflow_trace = [*state["workflow_trace"], "policy_finalize"]
         investigation = InvestigationTrace(
             plan=state["investigation_plan"],
+            analyst_query=state.get("analyst_query", ""),
             plan_executions=state["plan_executions"],
             critic=state["critic_report"],
             react_steps=state["react_steps"],
@@ -573,11 +584,13 @@ class TriageGraphRunner:
         trace_id: str,
         alert_ref: AlertRef,
         data_classification: DataClassification,
+        analyst_query: str = "",
     ) -> TriageGraphState:
         return {
             "job_id": job_id,
             "case_id": case_id,
             "trace_id": trace_id,
+            "analyst_query": analyst_query,
             "alert_ref": alert_ref,
             "data_classification": data_classification,
             "evidence": [],

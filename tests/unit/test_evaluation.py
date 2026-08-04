@@ -21,10 +21,19 @@ def test_gold_evaluation_meets_release_gate() -> None:
     assert metrics["total"] == 30
     assert metrics["verdict_passed"] == 30
     assert metrics["evidence_passed"] == 30
-    assert metrics["citation_precision_passed"] >= 29
+    assert metrics["citation_precision_at_1_passed"] >= 29
+    assert metrics["prompt_applied_passed"] == 30
     assert metrics["structured_output_passed"] == 30
     assert metrics["unauthorized_high_risk_actions"] == 0
     assert metrics["release_gate_passed"] is True
+
+
+def test_gold_dataset_contains_30_distinct_prompt_level_standards() -> None:
+    report = run_gold_evaluation()
+
+    assert len({item["eval_id"] for item in report["records"]}) == 30
+    assert all(item["expected_answer_point"] for item in report["records"])
+    assert all(item["prompt_applied_pass"] for item in report["records"])
 
 
 def test_adversarial_corpus_has_50_unique_cases_and_denies_write_tools() -> None:

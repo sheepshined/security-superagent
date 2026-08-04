@@ -43,6 +43,7 @@ class InvestigationSupervisor:
         *,
         plan: InvestigationPlan,
         alert: NormalizedAlert,
+        analyst_query: str = "",
         progress: AgentProgress | None = None,
     ) -> SupervisorExecution:
         groups: dict[str, list[InvestigationPlanStep]] = {}
@@ -74,6 +75,7 @@ class InvestigationSupervisor:
                 "knowledge_agent",
                 groups["knowledge_agent"],
                 alert,
+                analyst_query=analyst_query,
             )
 
         evidence: list[Evidence] = []
@@ -113,6 +115,7 @@ class InvestigationSupervisor:
         agent: str,
         steps: list[InvestigationPlanStep],
         alert: NormalizedAlert,
+        analyst_query: str = "",
     ) -> tuple[list[Evidence], list[Citation], list[PlanStepExecution], AgentReport]:
         started_at = utc_now()
         evidence: list[Evidence] = []
@@ -124,7 +127,11 @@ class InvestigationSupervisor:
         seen_citations: set[str] = set()
 
         for step in steps:
-            tool_name, tool_input = self._tool_for_step(step, alert)
+            tool_name, tool_input = self._tool_for_step(
+                step,
+                alert,
+                analyst_query=analyst_query,
+            )
             status = "completed"
             try:
                 observation = self.tools.invoke(
@@ -196,15 +203,39 @@ class InvestigationSupervisor:
     def _tool_for_step(
         step: InvestigationPlanStep,
         alert: NormalizedAlert,
+        analyst_query: str = "",
     ) -> tuple[str, dict[str, str]]:
         if step.agent == "knowledge_agent":
-            return "search_security_knowledge", {"query": " ".join([alert.title, *alert.labels])}
+            return "search_security_knowledge", {
+                "query": " ".join(
+                    [
+                        alert.title,
+                        *alert.labels,
+                        InvestigationSupervisor._knowledge_hints(alert),
+                        analyst_query,
+                    ]
+                )
+            }
         tool_by_agent = {
             "network_agent": "query_network_context",
             "endpoint_agent": "query_endpoint_context",
             "identity_agent": "query_identity_context",
         }
         return tool_by_agent[step.agent], {"target": InvestigationSupervisor._default_target(alert)}
+
+    @staticmethod
+    def _knowledge_hints(alert: NormalizedAlert) -> str:
+        labels = set(alert.labels)
+        hints: list[str] = []
+        if "lateral-movement" in labels:
+            hints.append(
+                "ATT&CK T1021.002 T1059.001 T1078 SMB WinRM PowerShell valid accounts"
+            )
+        if "candidate-false-positive" in labels:
+            hints.append("approved change allowlist authorized operations response playbook")
+        if "missing-endpoint-evidence" in labels:
+            hints.append("endpoint telemetry gap evidence collection response playbook")
+        return " ".join(hints)
 
     @staticmethod
     def _default_target(alert: NormalizedAlert) -> str:

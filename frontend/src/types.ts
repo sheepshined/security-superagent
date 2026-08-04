@@ -100,6 +100,7 @@ export interface Citation {
 }
 
 export interface InvestigationTrace {
+  analyst_query: string;
   plan: {
     strategy: "plan_execute_verify_replan";
     objective: string;

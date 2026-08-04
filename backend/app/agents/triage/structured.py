@@ -51,13 +51,16 @@ class StructuredTriageAnalyzer:
             [
                 (
                     "system",
-                    "你是安全告警研判助手。只能使用输入中的证据，必须区分已观察事实、"
-                    "推断和未知项。不得编造证据 ID；不执行任何处置动作。",
+                    "You are a security-alert assessment assistant. Use only the supplied "
+                    "evidence. Distinguish observed facts, inferences, and unknowns. Never "
+                    "invent evidence IDs and never execute a response action. Return the "
+                    "requested structured assessment, not hidden chain-of-thought.",
                 ),
                 (
                     "human",
-                    "告警：\n{alert_json}\n\n证据：\n{evidence_json}\n\n"
-                    "检索资料：\n{citations_json}\n\n{format_instructions}",
+                    "Analyst investigation goal:\n{analyst_query}\n\n"
+                    "Alert:\n{alert_json}\n\nEvidence:\n{evidence_json}\n\n"
+                    "Retrieved sources:\n{citations_json}\n\n{format_instructions}",
                 ),
             ]
         )
@@ -66,20 +69,21 @@ class StructuredTriageAnalyzer:
             [
                 (
                     "system",
-                    "你是安全调查动作规划器。只能从给定只读工具中选择一个动作。"
-                    "禁止选择处置、写入、Shell、SQL 或通用 HTTP 工具。"
-                    "query_network_context、query_endpoint_context、"
-                    "query_identity_context 的 tool_input 必须且只能是 "
-                    '{{"target":"告警实体或指标的原始值"}}；'
-                    "search_security_knowledge 必须且只能是 "
-                    '{{"query":"检索文本"}}；finish 的 tool_input 必须是空对象。'
-                    "不得改写、推测或新造 target。"
-                    "decision_summary 只记录可审计的选择依据，不输出隐藏思维链。",
+                    "You are a security investigation action selector. Choose at most one "
+                    "action from the supplied read-only tools. Never select response, write, "
+                    "shell, SQL, or generic HTTP tools. query_network_context, "
+                    "query_endpoint_context, and query_identity_context accept only "
+                    '{{"target":"an exact alert entity or indicator"}}. '
+                    "search_security_knowledge accepts only "
+                    '{{"query":"retrieval text"}}; finish accepts an empty object. '
+                    "Do not transform or invent targets. decision_summary must contain only "
+                    "an auditable selection basis, not hidden chain-of-thought.",
                 ),
                 (
                     "human",
-                    "告警：\n{alert_json}\n\nCritic：\n{critic_json}\n\n"
-                    "已调用工具：{attempted_tools}\n剩余迭代：{remaining_iterations}\n\n"
+                    "Alert:\n{alert_json}\n\nCritic:\n{critic_json}\n\n"
+                    "Attempted tools: {attempted_tools}\n"
+                    "Remaining iterations: {remaining_iterations}\n\n"
                     "{format_instructions}",
                 ),
             ]
@@ -92,9 +96,13 @@ class StructuredTriageAnalyzer:
         evidence: list[Evidence],
         citations: list[Citation],
         data_classification: DataClassification,
+        analyst_query: str = "",
     ) -> dict[str, Any]:
         prompt_value = self._prompt.invoke(
             {
+                "analyst_query": (
+                    analyst_query or "Assess the alert using only the supplied evidence."
+                ),
                 "alert_json": alert.model_dump_json(indent=2),
                 "evidence_json": json.dumps(
                     [item.model_dump(mode="json") for item in evidence],
@@ -145,7 +153,7 @@ class StructuredTriageAnalyzer:
             {
                 "alert_json": alert.model_dump_json(indent=2),
                 "critic_json": critic.model_dump_json(indent=2),
-                "attempted_tools": ", ".join(attempted_tools) or "无",
+                "attempted_tools": ", ".join(attempted_tools) or "none",
                 "remaining_iterations": remaining_iterations,
                 "format_instructions": self._react_parser.get_format_instructions(),
             }

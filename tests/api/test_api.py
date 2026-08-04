@@ -92,6 +92,7 @@ def test_health_and_readiness() -> None:
 def test_triage_job_is_idempotent_and_returns_result() -> None:
     payload = {
         "alert_ref": {"source": "mock-xdr", "external_id": "A-TRI-001"},
+        "analyst_query": "Verify the lateral movement chain and approved-change context.",
         "mode": "mock",
         "options": {"allow_superagent_escalation": True},
     }
@@ -121,6 +122,8 @@ def test_triage_job_is_idempotent_and_returns_result() -> None:
         "policy_finalize",
     ]
     assert result.json()["investigation"]["stop_reason"] == "not_required"
+    assert result.json()["investigation"]["analyst_query"] == payload["analyst_query"]
+    assert payload["analyst_query"] in result.json()["investigation"]["plan"]["objective"]
     assert job_body["analysis_version"] == 1
     assert job_body["workflow_version_id"] == "workflow_default_v1"
 

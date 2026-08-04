@@ -28,6 +28,16 @@ Cookie；所有变更请求还必须携带会话返回的 CSRF 值。OpenAPI 位
 | 动作 | `POST .../{id}/approve/reject` | 四眼审批 |
 | 动作 | `POST .../{id}/execute/verify/rollback` | 执行、回查和回滚 |
 
+提交研判任务时可选传入 `analyst_query`（最多 4000 字符）。它会进入结构化调查计划、
+知识检索和模型输入，并原样保存在 Investigation Trace 中；不传时保持原有告警驱动行为：
+
+```json
+{
+  "alert_ref": {"source": "mock-xdr", "external_id": "A-SUP-001"},
+  "analyst_query": "验证网络、端点和身份事件是否构成横向移动攻击链"
+}
+```
+
 任务终态包括 `SUCCEEDED`、`DEGRADED`、`FAILED`、`REJECTED`、`EXPIRED` 和
 `CANCELLED`。模型不可用、非法 JSON 或超时时不伪造实时结果，任务进入安全降级。
 

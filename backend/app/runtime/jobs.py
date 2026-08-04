@@ -576,6 +576,7 @@ class JobRuntime:
                     trace_id=current.trace_id,
                     alert_ref=request.alert_ref,
                     data_classification=data_classification,
+                    analyst_query=request.analyst_query,
                     progress_hook=lambda event_type, node, progress, data: self._record_progress(
                         job_id,
                         event_type=event_type,

@@ -16,7 +16,7 @@ DeepSeek、SQLite、Chroma、React 和 MCP 为技术基线，当前在 Mock XDR 
 - 本地 RBAC：管理员、分析员、审批员，Argon2id、HttpOnly Cookie 和 CSRF。
 - 只读 Streamable HTTP MCP：知识搜索、合成告警上下文、最小化 Trace 摘要。
 - `lateral-movement-investigation` Skill v1 与 SUP-001/SUP-002 演示场景。
-- 30 条研判/RAG 金标准草案、50 条 Prompt Injection/越权安全样本。
+- 已人工复核并回归通过的 30 条题目级研判/RAG 金标准、50 条 Prompt Injection/越权安全样本。
 
 ## 一键启动
 
@@ -55,10 +55,11 @@ npm.cmd run build
 npm.cmd run e2e
 ```
 
-当前本地门禁：后端 78 项通过，分支覆盖率 85.48%，认证、确定性策略门、
+当前本地门禁：后端 80 项通过，分支覆盖率 85.46%，认证、确定性策略门、
 工具注册和响应状态机均为 100% 行/分支覆盖；前端 3 项单元/组件测试和
-SUP-001 浏览器 E2E 通过；离线评测 30/30，未授权高风险动作 0。30 条金标准仍需
-用户人工审核，不能将自动一致性结果等同于人工标注完成。
+SUP-001 浏览器 E2E 通过；金标准 v1.1 的结论、场景证据、题目焦点证据、
+Prompt 接入、Citation Precision@1、结构化输出和动作集合均为 30/30，
+未授权高风险动作 0，人工复核状态为 `reviewed`。
 
 ## 安全边界
 
@@ -74,6 +75,7 @@ SUP-001 浏览器 E2E 通过；离线评测 30/30，未授权高风险动作 0�
 - [API 说明](docs/API.md)
 - [开发指南](docs/DEVELOPMENT.md)
 - [测试与验收](docs/TESTING.md)
+- [金标准 v1.1 复核记录](docs/GOLD_STANDARD_V1_1.md)
 - [Docker 部署](docs/DEPLOYMENT.md)
 - [安全设计](docs/SECURITY.md)
 - [演示脚本](docs/DEMO.md)
@@ -85,4 +87,4 @@ SUP-001 浏览器 E2E 通过；离线评测 30/30，未授权高风险动作 0�
 - 本地管理员已初始化，真实登录、Cookie、CSRF、授权和会话撤销验收通过。
 - Docker Desktop 按用户确认采用约 4GB；完整索引与主演示已验证，索引构建须错峰。
 - XDR 平台鉴权、字段、分页、限流、Webhook 和响应接口资料尚未提供。
-- 30 条评测样本需要用户确认，正式现场演示前需要确认安全结论表述。
+- 30 条评测样本已完成用户复核与修订回归；正式现场演示前仅需确认最终安全表述。

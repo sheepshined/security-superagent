@@ -173,6 +173,30 @@ def test_triage_graph_runs_all_nodes_and_persists_checkpoint() -> None:
     assert checkpoint["result"].job_id == "job_graph"
 
 
+def test_analyst_query_is_auditable_and_reaches_the_investigation_plan() -> None:
+    runner = make_runner()
+    analyst_query = "Verify whether the approved change explains the activity."
+
+    result = runner.run(
+        job_id="job_query",
+        case_id="case_query",
+        trace_id="trace_query",
+        alert_ref=AlertRef(source="mock-xdr", external_id="A-TRI-002"),
+        data_classification=DataClassification.SYNTHETIC,
+        analyst_query=analyst_query,
+    )
+
+    assert result.investigation is not None
+    assert result.investigation.analyst_query == analyst_query
+    assert analyst_query in result.investigation.plan.objective
+    assert any(
+        analyst_query in step.objective
+        for step in result.investigation.plan.steps
+        if step.agent == "knowledge_agent"
+    )
+    assert "ev_tri_002_network" in {item.evidence_id for item in result.evidence}
+
+
 def test_superagent_lateral_chain_merges_specialist_reports() -> None:
     runner = make_runner()
 

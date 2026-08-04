@@ -117,6 +117,7 @@ export default function App() {
   const [jobEvents, setJobEvents] = useState<JobEvent[]>([]);
   const [activePage, setActivePage] = useState("运营总览");
   const [approvalRefresh, setApprovalRefresh] = useState(0);
+  const [analystQuery, setAnalystQuery] = useState("");
   const [api, contextHolder] = message.useMessage();
 
   useEffect(() => {
@@ -181,7 +182,10 @@ export default function App() {
     setJobProgress(0);
     setCurrentNode("queued");
     try {
-      const job = await submitTriage(scenarioExternalIds[scenario.scenario_id]);
+      const job = await submitTriage(
+        scenarioExternalIds[scenario.scenario_id],
+        analystQuery.trim()
+      );
       let terminalStatus = "";
       await streamJob(job.job_id, (event) => {
         terminalStatus = event.status;
@@ -262,7 +266,7 @@ export default function App() {
         )
       }
     ],
-    [runningId]
+    [analystQuery, runningId]
   );
 
   if (authLoading) {
@@ -439,6 +443,16 @@ export default function App() {
               extra={<Tag color="blue">配置驱动</Tag>}
             >
               <Spin spinning={loading}>
+                <Input.TextArea
+                  value={analystQuery}
+                  onChange={(event) => setAnalystQuery(event.target.value)}
+                  placeholder="可选：输入本次研判目标，例如“核验是否存在批准变更，并说明为何禁止自动隔离”"
+                  maxLength={4000}
+                  autoSize={{minRows: 2, maxRows: 4}}
+                  showCount
+                  style={{marginBottom: 16}}
+                  aria-label="本次研判目标"
+                />
                 <Table
                   rowKey="scenario_id"
                   columns={columns}
@@ -759,6 +773,14 @@ function InvestigationPanel({
       }
     >
       <Space direction="vertical" size={14} style={{width: "100%"}}>
+        {trace.analyst_query && (
+          <Alert
+            type="info"
+            showIcon
+            message="本次研判目标"
+            description={trace.analyst_query}
+          />
+        )}
         <Text>{trace.plan.objective}</Text>
         <Steps
           direction="vertical"

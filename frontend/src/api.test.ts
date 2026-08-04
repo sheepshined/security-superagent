@@ -26,7 +26,7 @@ describe("API client security headers", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await submitTriage("A-SUP-001");
+    await submitTriage("A-SUP-001", "核验跨域横向移动攻击链");
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.headers).toMatchObject({
@@ -35,6 +35,9 @@ describe("API client security headers", () => {
       "Idempotency-Key": "fixed-idempotency-key"
     });
     expect(init.credentials).toBe("same-origin");
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      analyst_query: "核验跨域横向移动攻击链"
+    });
   });
 
   it("raises a typed error for an unsuccessful response", async () => {
