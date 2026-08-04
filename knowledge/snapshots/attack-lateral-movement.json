@@ -1,0 +1,66 @@
+[
+  {
+    "document_id": "mitre-attack-t1021-002",
+    "title": "MITRE ATT&CK T1021.002 - SMB/Windows Admin Shares",
+    "source_uri": "https://attack.mitre.org/techniques/T1021/002/",
+    "version": "live-2026-07-31",
+    "published_at": "2026-05-12T00:00:00+00:00",
+    "effective_at": "2026-05-12T00:00:00+00:00",
+    "source_quality": 1.0,
+    "access_labels": ["public", "synthetic"],
+    "metadata": {
+      "framework": "MITRE ATT&CK",
+      "technique_id": "T1021.002",
+      "tactic": "Lateral Movement"
+    },
+    "content": "攻击者可能使用有效账号通过 SMB 访问远程网络共享或 Windows 管理员隐藏共享，并以登录用户身份执行操作，从而在网络中横向移动。研判时应关联 SMB 会话、远程认证、目标主机范围、账号权限和后续服务执行行为。"
+  },
+  {
+    "document_id": "mitre-attack-t1059-001",
+    "title": "MITRE ATT&CK T1059.001 - PowerShell",
+    "source_uri": "https://attack.mitre.org/techniques/T1059/001/",
+    "version": "live-2026-07-31",
+    "published_at": "2026-05-12T00:00:00+00:00",
+    "effective_at": "2026-05-12T00:00:00+00:00",
+    "source_quality": 1.0,
+    "access_labels": ["public", "synthetic"],
+    "metadata": {
+      "framework": "MITRE ATT&CK",
+      "technique_id": "T1059.001",
+      "tactic": "Execution"
+    },
+    "content": "攻击者可能滥用 PowerShell 执行命令、发现系统信息或运行代码，也可能从网络下载并在磁盘或内存中执行载荷。Office 进程派生 PowerShell、异常编码命令、下载行为和紧随其后的网络连接应作为重点证据，但必须结合业务脚本和变更记录排除误报。"
+  },
+  {
+    "document_id": "mitre-attack-t1078",
+    "title": "MITRE ATT&CK T1078 - Valid Accounts",
+    "source_uri": "https://attack.mitre.org/techniques/T1078/",
+    "version": "live-2026-07-31",
+    "published_at": "2026-05-12T00:00:00+00:00",
+    "effective_at": "2026-05-12T00:00:00+00:00",
+    "source_quality": 1.0,
+    "access_labels": ["public", "synthetic"],
+    "metadata": {
+      "framework": "MITRE ATT&CK",
+      "technique_id": "T1078",
+      "tactic": "Initial Access, Persistence, Privilege Escalation, Defense Evasion"
+    },
+    "content": "攻击者可能获取并滥用现有账号凭证以绕过访问控制、访问远程系统或提升权限。异常设备、异常时段、权限变化、服务账号交互式登录和跨主机登录扩散是重要观测点；应同时检查合法运维窗口、多因素认证、账号用途和设备合规状态。"
+  },
+  {
+    "document_id": "playbook-lateral-movement-response",
+    "title": "横向移动事件受控响应演示规范",
+    "source_uri": "internal://playbooks/lateral-movement-response",
+    "version": "1.0.0",
+    "published_at": "2026-07-31T00:00:00+00:00",
+    "effective_at": "2026-07-31T00:00:00+00:00",
+    "source_quality": 0.9,
+    "access_labels": ["synthetic"],
+    "metadata": {
+      "knowledge_type": "response_playbook",
+      "scenario": "lateral_movement"
+    },
+    "content": "当网络、端点和身份证据共同支持横向移动时，先对候选响应执行 dry-run，核验目标、影响范围、TTL、业务冲突和回滚能力。主机隔离、账号限制和批量封禁属于高风险动作，必须绑定不可变动作计划并经过审批。执行后应回查网络连接、隔离状态和账号会话；部分成功不得表述为完全闭环。"
+  }
+]
+

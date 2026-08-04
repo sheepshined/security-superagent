@@ -1,0 +1,60 @@
+{
+  "scenario": {
+    "scenario_id": "TRI-002",
+    "title": "批准的业务扫描任务",
+    "description": "扫描器产生高频连接，但资产白名单和有效变更单构成可信反证。",
+    "severity": "medium",
+    "expected_verdict": "false_positive",
+    "supports_superagent": false
+  },
+  "alert": {
+    "alert_id": "alt_tri_002",
+    "source": "mock-xdr",
+    "external_id": "A-TRI-002",
+    "title": "内部主机高频端口扫描",
+    "severity": "medium",
+    "occurred_at": "2026-08-18T02:00:03+00:00",
+    "ingested_at": "2026-08-18T02:00:08+00:00",
+    "entities": [
+      {"type": "host", "id": "asset_scanner_01", "role": "source"},
+      {"type": "service", "id": "approved_vulnerability_scan", "role": "activity"}
+    ],
+    "indicators": [],
+    "labels": ["scan", "candidate-false-positive"],
+    "raw_ref": "mock://alerts/A-TRI-002",
+    "schema_version": "1.0"
+  },
+  "evidence": [
+    {
+      "evidence_id": "ev_tri_002_network",
+      "type": "network_flow",
+      "source": "mock-probe",
+      "statement": "asset_scanner_01 按顺序探测服务器常见端口，行为与漏洞扫描模板一致。",
+      "observed_at": "2026-08-18T02:00:03+00:00",
+      "confidence": 0.96,
+      "raw_ref": "mock://flows/flow-tri-002",
+      "access_label": "synthetic"
+    },
+    {
+      "evidence_id": "ev_tri_002_allowlist",
+      "type": "asset_record",
+      "source": "mock-cmdb",
+      "statement": "asset_scanner_01 是登记在册的漏洞扫描器，当前处于允许列表。",
+      "observed_at": "2026-08-18T02:00:05+00:00",
+      "confidence": 0.99,
+      "raw_ref": "mock://assets/asset-scanner-01",
+      "access_label": "synthetic"
+    },
+    {
+      "evidence_id": "ev_tri_002_change",
+      "type": "change_record",
+      "source": "mock-cmdb",
+      "statement": "变更单 CHG-DEMO-20260818 批准 02:00 至 04:00 执行内部漏洞扫描。",
+      "observed_at": "2026-08-18T01:59:00+00:00",
+      "confidence": 0.99,
+      "raw_ref": "mock://changes/CHG-DEMO-20260818",
+      "access_label": "synthetic"
+    }
+  ]
+}
+

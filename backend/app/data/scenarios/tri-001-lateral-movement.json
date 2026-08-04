@@ -1,0 +1,74 @@
+{
+  "scenario": {
+    "scenario_id": "TRI-001",
+    "title": "异常东西向访问与疑似横向移动",
+    "description": "办公终端在非工作时段访问多台服务器，并出现可疑进程链和异常身份登录。",
+    "severity": "high",
+    "expected_verdict": "true_positive",
+    "supports_superagent": true
+  },
+  "alert": {
+    "alert_id": "alt_tri_001",
+    "source": "mock-xdr",
+    "external_id": "A-TRI-001",
+    "title": "异常东西向 SMB/RDP 连接",
+    "severity": "high",
+    "occurred_at": "2026-08-18T14:21:03+00:00",
+    "ingested_at": "2026-08-18T14:21:08+00:00",
+    "entities": [
+      {"type": "host", "id": "asset_ws_023", "role": "source"},
+      {"type": "host", "id": "asset_db_01", "role": "target"},
+      {"type": "host", "id": "asset_file_02", "role": "target"},
+      {"type": "user", "id": "user_demo_01", "role": "actor"}
+    ],
+    "indicators": [
+      {"type": "ip", "value": "198.51.100.23"}
+    ],
+    "labels": ["east-west", "lateral-movement", "credential-access"],
+    "raw_ref": "mock://alerts/A-TRI-001",
+    "schema_version": "1.0"
+  },
+  "evidence": [
+    {
+      "evidence_id": "ev_tri_001_network",
+      "type": "network_flow",
+      "source": "mock-probe",
+      "statement": "WS-023 在 90 秒内向 DB-01、FILE-02 等 8 台服务器发起 SMB/RDP 连接。",
+      "observed_at": "2026-08-18T14:21:03+00:00",
+      "confidence": 0.98,
+      "raw_ref": "mock://flows/flow-tri-001",
+      "access_label": "synthetic"
+    },
+    {
+      "evidence_id": "ev_tri_001_process",
+      "type": "process_tree",
+      "source": "mock-edr",
+      "statement": "WS-023 出现 winword.exe 派生 powershell.exe，随后建立到服务器网段的连接。",
+      "observed_at": "2026-08-18T14:20:41+00:00",
+      "confidence": 0.96,
+      "raw_ref": "mock://process-trees/tree-tri-001",
+      "access_label": "synthetic"
+    },
+    {
+      "evidence_id": "ev_tri_001_identity",
+      "type": "identity_event",
+      "source": "mock-iam",
+      "statement": "user_demo_01 在非工作时段从未登记设备登录，且 24 小时内发生权限提升。",
+      "observed_at": "2026-08-18T14:18:12+00:00",
+      "confidence": 0.91,
+      "raw_ref": "mock://identity/id-tri-001",
+      "access_label": "synthetic"
+    },
+    {
+      "evidence_id": "ev_tri_001_change",
+      "type": "change_record",
+      "source": "mock-cmdb",
+      "statement": "当前时间窗内没有匹配 WS-023 或 user_demo_01 的批准变更单。",
+      "observed_at": "2026-08-18T14:22:00+00:00",
+      "confidence": 0.95,
+      "raw_ref": "mock://changes/change-tri-001",
+      "access_label": "synthetic"
+    }
+  ]
+}
+

@@ -1,0 +1,52 @@
+{
+  "scenario": {
+    "scenario_id": "TRI-003",
+    "title": "关键端点证据缺失",
+    "description": "网络侧发现异常外联，但端点遥测不可用，系统必须降级为待确认。",
+    "severity": "high",
+    "expected_verdict": "needs_review",
+    "supports_superagent": false
+  },
+  "alert": {
+    "alert_id": "alt_tri_003",
+    "source": "mock-xdr",
+    "external_id": "A-TRI-003",
+    "title": "终端向高风险地址异常外联",
+    "severity": "high",
+    "occurred_at": "2026-08-18T09:40:03+00:00",
+    "ingested_at": "2026-08-18T09:40:08+00:00",
+    "entities": [
+      {"type": "host", "id": "asset_ws_041", "role": "source"},
+      {"type": "ip", "id": "203.0.113.44", "role": "destination"}
+    ],
+    "indicators": [
+      {"type": "ip", "value": "203.0.113.44"}
+    ],
+    "labels": ["outbound", "missing-endpoint-evidence"],
+    "raw_ref": "mock://alerts/A-TRI-003",
+    "schema_version": "1.0"
+  },
+  "evidence": [
+    {
+      "evidence_id": "ev_tri_003_network",
+      "type": "network_flow",
+      "source": "mock-probe",
+      "statement": "WS-041 连续三次连接 203.0.113.44，但会话数据量较小。",
+      "observed_at": "2026-08-18T09:40:03+00:00",
+      "confidence": 0.88,
+      "raw_ref": "mock://flows/flow-tri-003",
+      "access_label": "synthetic"
+    },
+    {
+      "evidence_id": "ev_tri_003_edr_gap",
+      "type": "telemetry_gap",
+      "source": "mock-edr",
+      "statement": "WS-041 的 EDR 代理离线，无法取得进程树、文件或用户会话证据。",
+      "observed_at": "2026-08-18T09:41:00+00:00",
+      "confidence": 1.0,
+      "raw_ref": "mock://telemetry-gaps/gap-tri-003",
+      "access_label": "synthetic"
+    }
+  ]
+}
+
