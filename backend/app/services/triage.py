@@ -137,6 +137,10 @@ class TriageService:
         validated["decision_authority"] = "deterministic_policy"
         return validated
 
+    # Platform threat-definition labels (from Sangfor threatDefine/attackState).
+    _PLATFORM_REAL_THREAT_LABELS = {"threat_define_500", "threat_define_900"}
+    _PLATFORM_ATTACK_SUCCEEDED_LABELS = {"attack_state_2", "attack_state_3"}
+
     @staticmethod
     def _decide_verdict(labels: set[str], evidence_types: set[str]) -> Verdict:
         if (
@@ -156,6 +160,16 @@ class TriageService:
             <= evidence_types
         ):
             return Verdict.TRUE_POSITIVE
+        # Moderate platform-attestation: the platform engine already classifies
+        # the alert as a real threat (virus/directed attack) with a succeeded
+        # attack state, and the agent gathered at least network evidence. The
+        # verdict is still evidence-gated; no response action is auto-executed.
+        if (
+            labels & TriageService._PLATFORM_REAL_THREAT_LABELS
+            and labels & TriageService._PLATFORM_ATTACK_SUCCEEDED_LABELS
+            and "network_flow" in evidence_types
+        ):
+            return Verdict.TRUE_POSITIVE
         return Verdict.NEEDS_REVIEW
 
     @staticmethod
@@ -163,6 +177,11 @@ class TriageService:
         average = sum(item.confidence for item in evidence) / max(len(evidence), 1)
         if verdict == Verdict.NEEDS_REVIEW:
             return round(min(average, 0.62), 2)
+        if verdict == Verdict.TRUE_POSITIVE:
+            # More distinct evidence types raise the confidence moderately.
+            type_count = len({item.type for item in evidence})
+            boosted = average + min(0.05 * type_count, 0.15)
+            return round(min(boosted, 0.95), 2)
         return round(min(average, 0.99), 2)
 
     @staticmethod
@@ -180,16 +199,36 @@ class TriageService:
             return []
         source_host = next(
             (entity.id for entity in entities if entity.type == "host" and entity.role == "source"),
-            "unknown-host",
+            None,
         )
+        source_ip = next(
+            (entity.id for entity in entities if entity.type == "ip" and entity.role == "source"),
+            None,
+        )
+        if source_host is None and source_ip is None:
+            return []
+        if source_host is not None:
+            return [
+                ActionProposal(
+                    tool_name="edr.isolate_host",
+                    target=source_host,
+                    scope={"ttl_minutes": 30},
+                    reason="多源证据支持疑似横向移动，需要限制继续扩散。",
+                    expected_effect="阻断该终端的新网络连接并保留调查通道。",
+                    rollback="审批者可使用返回的 rollback_token 解除隔离。",
+                    risk_level=ToolRisk.HIGH,
+                    dry_run=True,
+                    requires_approval=True,
+                )
+            ]
         return [
             ActionProposal(
-                tool_name="edr.isolate_host",
-                target=source_host,
-                scope={"ttl_minutes": 30},
-                reason="多源证据支持疑似横向移动，需要限制继续扩散。",
-                expected_effect="阻断该终端的新网络连接并保留调查通道。",
-                rollback="审批者可使用返回的 rollback_token 解除隔离。",
+                tool_name="network.block_indicator",
+                target=source_ip,
+                scope={"timeType": "temporary", "timeValue": 30, "timeUnit": "m"},
+                reason="平台定性为真实攻击且攻击成功，需要限制攻击源继续扩散。",
+                expected_effect="在联动设备上临时封禁攻击源 IP 的出向访问。",
+                rollback="审批者可通过解除封禁恢复该 IP 的访问。",
                 risk_level=ToolRisk.HIGH,
                 dry_run=True,
                 requires_approval=True,
