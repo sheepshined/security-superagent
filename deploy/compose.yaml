@@ -17,6 +17,8 @@ services:
       PYTHONPATH: /app/backend
       FASTEMBED_CACHE_PATH: /app/data/models/fastembed
       KNOWLEDGE_CACHE_DIRECTORY: /app/data/knowledge-cache
+      # Container-internal path: the .env XDR_CA_BUNDLE is a host path.
+      XDR_CA_BUNDLE: /app/certs/Sangfor-Platform.crt
     mem_limit: 2g
     restart: unless-stopped
     healthcheck:
@@ -61,6 +63,8 @@ services:
       MCP_HOST: 0.0.0.0
       MCP_PORT: 8100
       FASTEMBED_CACHE_PATH: /app/data/models/fastembed
+      # Container-internal path: the .env XDR_CA_BUNDLE is a host path.
+      XDR_CA_BUNDLE: /app/certs/Sangfor-Platform.crt
     command: ["python", "-m", "app.mcp_server"]
     # The gateway loads the active multilingual index; the measured steady-state
     # footprint is about 231 MiB, so 256 MiB leaves no safe transient headroom.

@@ -1,0 +1,59 @@
+# Local-only compose for environments where Docker Hub is unreachable.
+# Uses locally built/tagged images instead of rebuilding from scratch.
+# NOT for CI/release use.
+services:
+  backend:
+    image: deploy-backend:local
+    env_file:
+      - ../.env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/runtime:/app/data/runtime
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/knowledge-index:/app/knowledge/index
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/knowledge-cache:/app/data/knowledge-cache
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/models:/app/data/models
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/certs:/app/certs:ro
+    environment:
+      PYTHONPATH: /app/backend
+      FASTEMBED_CACHE_PATH: /app/data/models/fastembed
+      KNOWLEDGE_CACHE_DIRECTORY: /app/data/knowledge-cache
+      XDR_CA_BUNDLE: /app/certs/Sangfor-Platform.crt
+    mem_limit: 2g
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  mcp-gateway:
+    image: deploy-mcp-gateway:local
+    env_file:
+      - ../.env
+    ports:
+      - "127.0.0.1:8100:8100"
+    volumes:
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/runtime:/app/data/runtime
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/knowledge-index:/app/knowledge/index
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/models:/app/data/models
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/certs:/app/certs:ro
+    environment:
+      PYTHONPATH: /app/backend
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8100
+      FASTEMBED_CACHE_PATH: /app/data/models/fastembed
+      XDR_CA_BUNDLE: /app/certs/Sangfor-Platform.crt
+    command: ["python", "-m", "app.mcp_server"]
+    mem_limit: 384m
+    restart: unless-stopped
+
+  frontend:
+    image: deploy-frontend:latest
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+    mem_limit: 256m
+    restart: unless-stopped
