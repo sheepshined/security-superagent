@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.adapters.mock_xdr import MockXDRAdapter
+from app.adapters.protocols import XDRAdapter
 from app.api.dependencies import (
     get_auth_service,
     get_job_repository,
@@ -17,7 +17,7 @@ from app.services.auth import AuthService
 
 router = APIRouter(tags=["health"])
 SettingsDependency = Annotated[Settings, Depends(get_settings)]
-XDRDependency = Annotated[MockXDRAdapter, Depends(get_xdr_adapter)]
+XDRDependency = Annotated[XDRAdapter, Depends(get_xdr_adapter)]
 RepositoryDependency = Annotated[JobRepository, Depends(get_job_repository)]
 RuntimeDependency = Annotated[JobRuntime, Depends(get_job_runtime)]
 AuthDependency = Annotated[AuthService, Depends(get_auth_service)]
@@ -38,7 +38,12 @@ def readyz(
     auth: AuthDependency,
     catalog: CatalogDependency,
 ) -> dict[str, object]:
-    scenarios = xdr.list_scenarios()
+    scenarios: list[object] = []
+    xdr_connected = True
+    try:
+        scenarios = xdr.list_scenarios()
+    except Exception:
+        xdr_connected = False
     database_ready = repository.health()
     active_model = (
         "deepseek"
@@ -46,10 +51,15 @@ def readyz(
         else "mock"
     )
     knowledge_metrics = catalog.metrics()
+    if settings.xdr_mode == "platform":
+        ready = xdr_connected and database_ready
+    else:
+        ready = bool(scenarios) and database_ready
     return {
-        "status": "ready" if scenarios and database_ready else "not_ready",
+        "status": "ready" if ready else "not_ready",
         "dependencies": {
             "xdr": settings.xdr_mode,
+            "xdr_connected": xdr_connected,
             "model": active_model,
             "langsmith": (
                 "enabled"

@@ -4,7 +4,9 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from app.adapters.mock_xdr import MockXDRAdapter, ScenarioNotFoundError
+from app.adapters.mock_xdr import ScenarioNotFoundError
+from app.adapters.platform_xdr import ALERT_SOURCE, PlatformXDRAdapter, XdrAlertNotFoundError
+from app.adapters.protocols import XDRAdapter
 from app.domain.models import AlertRef
 from app.rag.hybrid import HybridRetriever
 from app.runtime.jobs import JobNotFoundError, JobRepository, ResultNotReadyError
@@ -17,7 +19,7 @@ class SecurityMCPTools:
         self,
         *,
         retriever: HybridRetriever,
-        xdr: MockXDRAdapter,
+        xdr: XDRAdapter,
         jobs: JobRepository,
     ) -> None:
         self._retriever = retriever
@@ -54,15 +56,17 @@ class SecurityMCPTools:
         normalized_id = external_id.strip()
         if not normalized_id:
             raise ValueError("external_id is required")
+        is_platform = isinstance(self._xdr, PlatformXDRAdapter)
         try:
+            source = ALERT_SOURCE if is_platform else "mock-xdr"
             alert = self._xdr.get_alert(
-                AlertRef(source="mock-xdr", external_id=normalized_id[:128])
+                AlertRef(source=source, external_id=normalized_id[:128])
             )
             evidence = self._xdr.get_evidence(alert)
-        except ScenarioNotFoundError as exc:
-            raise ValueError("synthetic alert not found") from exc
+        except (ScenarioNotFoundError, XdrAlertNotFoundError) as exc:
+            raise ValueError("alert not found on the configured XDR source") from exc
         return {
-            "classification": "synthetic",
+            "classification": "platform_real" if is_platform else "synthetic",
             "alert": alert.model_dump(mode="json"),
             "evidence": [
                 {

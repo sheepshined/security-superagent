@@ -13,6 +13,7 @@ from app.api.dependencies import (
     get_job_runtime,
     get_triage_graph_runner,
     get_workflow_service,
+    get_xdr_adapter,
 )
 from app.core.config import Settings, get_settings
 from app.main import app
@@ -56,6 +57,7 @@ app.dependency_overrides[get_job_runtime] = lambda: test_runtime
 app.dependency_overrides[get_auth_service] = lambda: test_auth
 app.dependency_overrides[get_action_service] = lambda: test_actions
 app.dependency_overrides[get_workflow_service] = lambda: test_workflows
+app.dependency_overrides[get_xdr_adapter] = lambda: MockXDRAdapter()
 app.dependency_overrides[get_settings] = lambda: test_settings
 
 client = TestClient(app)

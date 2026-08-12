@@ -81,14 +81,19 @@ export function getReadiness(): Promise<RuntimeReadiness> {
   return request<RuntimeReadiness>("/readyz");
 }
 
-export function submitTriage(externalId: string, analystQuery = ""): Promise<JobAccepted> {
+export async function submitTriage(externalId: string, analystQuery = ""): Promise<JobAccepted> {
+  const readiness = await getReadiness();
+  const isPlatform = readiness.dependencies?.xdr === "platform";
   return request<JobAccepted>("/api/v1/triage/jobs", {
     method: "POST",
     headers: {"Idempotency-Key": crypto.randomUUID()},
     body: JSON.stringify({
-      alert_ref: {source: "mock-xdr", external_id: externalId},
+      alert_ref: {
+        source: isPlatform ? "sangfor-xdr" : "mock-xdr",
+        external_id: externalId
+      },
       analyst_query: analystQuery,
-      mode: "mock",
+      mode: isPlatform ? "platform" : "mock",
       options: {
         time_window_minutes: 60,
         allow_superagent_escalation: true,

@@ -74,7 +74,7 @@ def test_mcp_rejects_unknown_or_empty_inputs(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="query is required"):
         tools.knowledge_search("  ")
-    with pytest.raises(ValueError, match="synthetic alert not found"):
+    with pytest.raises(ValueError, match="alert not found on the configured XDR source"):
         tools.alert_context("A-REAL-001")
     with pytest.raises(ValueError, match="trace not found"):
         tools.trace_summary("tr_missing")

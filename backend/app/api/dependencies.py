@@ -6,11 +6,14 @@ from fastapi import Depends, HTTPException, Request
 
 from app.adapters.mock_xdr import MockXDRAdapter
 from app.adapters.models import DeepSeekModelAdapter
+from app.adapters.platform_response import PlatformResponseAdapter
+from app.adapters.platform_xdr import PlatformXDRAdapter
+from app.adapters.protocols import ResponseAdapter, XDRAdapter
 from app.adapters.response import MockResponseAdapter
 from app.agents.approval.graph import ApprovalGraphRunner
 from app.agents.triage.graph import TriageGraphRunner
 from app.agents.triage.structured import StructuredTriageAnalyzer
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.domain.enums import UserRole
 from app.domain.models import UserView, utc_now
 from app.observability.langsmith import LangSmithTracePolicy
@@ -33,14 +36,50 @@ SESSION_COOKIE = "ssa_session"
 CSRF_COOKIE = "ssa_csrf"
 
 
-@lru_cache
-def get_xdr_adapter() -> MockXDRAdapter:
-    return MockXDRAdapter()
+def _xdr_credentials(settings: Settings) -> tuple[str | None, str | None]:
+    """Parse the XDR API key as ``AK:SECRET``; never logs either value."""
+    api_key = settings.xdr_api_key
+    if api_key and ":" in api_key:
+        access_key, _, secret_key = api_key.partition(":")
+        return access_key.strip() or None, secret_key.strip() or None
+    return (api_key.strip() or None, None) if api_key else (None, None)
 
 
 @lru_cache
-def get_response_adapter() -> MockResponseAdapter:
-    return MockResponseAdapter()
+def get_xdr_adapter() -> XDRAdapter:
+    settings = get_settings()
+    if settings.xdr_mode != "platform":
+        return MockXDRAdapter()
+    access_key, secret_key = _xdr_credentials(settings)
+    return PlatformXDRAdapter(
+        base_url=settings.xdr_base_url,
+        auth_code=settings.xdr_auth_code or None,
+        access_key=access_key,
+        secret_key=secret_key,
+        data_source=settings.xdr_data_source,
+        timeout_seconds=settings.xdr_timeout_seconds,
+        max_retries=settings.xdr_max_retries,
+        default_page_size=settings.xdr_default_page_size,
+        tls_verify=settings.xdr_tls_verify,
+        ca_bundle=settings.xdr_ca_bundle,
+    )
+
+
+@lru_cache
+def get_response_adapter() -> ResponseAdapter:
+    settings = get_settings()
+    if settings.xdr_mode != "platform":
+        return MockResponseAdapter()
+    access_key, secret_key = _xdr_credentials(settings)
+    return PlatformResponseAdapter(
+        base_url=settings.xdr_base_url,
+        auth_code=settings.xdr_auth_code or None,
+        access_key=access_key,
+        secret_key=secret_key,
+        timeout_seconds=settings.xdr_timeout_seconds,
+        tls_verify=settings.xdr_tls_verify,
+        ca_bundle=settings.xdr_ca_bundle,
+    )
 
 
 @lru_cache

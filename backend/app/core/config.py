@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     xdr_mode: str = "mock"
     xdr_base_url: str = ""
     xdr_api_key: str = ""
+    xdr_auth_code: str = ""
+    xdr_data_source: str = "alerts"
+    xdr_tls_verify: bool = True
+    xdr_ca_bundle: str = ""
+    xdr_timeout_seconds: float = Field(default=30.0, ge=5, le=120)
+    xdr_max_retries: int = Field(default=2, ge=0, le=3)
+    xdr_default_page_size: int = Field(default=50, ge=5, le=200)
 
     database_url: str = "sqlite:///./data/runtime/security_superagent.sqlite3"
     langgraph_checkpoint_db: str = "./data/runtime/langgraph-checkpoints.sqlite3"

@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from app.adapters.models import DataClassification
 from app.agents.triage.graph import TriageGraphRunner
+from app.core.config import get_settings
 from app.domain.enums import JobStatus, ModelHealth, RunMode
 from app.domain.models import (
     JobAccepted,
@@ -564,11 +565,18 @@ class JobRuntime:
                 progress=20,
                 current_node="langgraph_triage",
             )
-            data_classification = (
-                DataClassification.SYNTHETIC
-                if request.mode == RunMode.MOCK
-                else DataClassification.REAL_SECURITY_DATA
-            )
+            # Data-classification gate: when the XDR source is the real
+            # platform, treat every job as REAL_SECURITY_DATA regardless of
+            # the client-supplied mode. This prevents a mislabelled request
+            # from letting real security data reach DeepSeek or LangSmith.
+            if get_settings().xdr_mode == "platform":
+                data_classification = DataClassification.REAL_SECURITY_DATA
+            else:
+                data_classification = (
+                    DataClassification.SYNTHETIC
+                    if request.mode == RunMode.MOCK
+                    else DataClassification.REAL_SECURITY_DATA
+                )
             result = await asyncio.wait_for(
                 self._graph_runner.arun(
                     job_id=job_id,
