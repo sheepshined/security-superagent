@@ -320,6 +320,25 @@ security-superagent/
 - 启动 Docker 后需重新检查 Backend、Frontend、MCP、活动 Chroma、ONNX 和重启恢复。
 - Playwright E2E 与 Docker 镜像构建已在同一提交的 GitHub CI 中通过，但仍建议现场演示前再跑一次。
 
+### P1：Docker 容器链路已复验（2026-08-12）
+
+- Docker Desktop v29.6.2 已启动，`deploy/compose.local.yaml` + `deploy/backend.local.Dockerfile`
+  （本机 Docker Hub 不可达，用本地缓存镜像 `deploy-backend:latest` 作 FROM 构建，仅补装 `pycryptodome`）。
+- 容器全部启动：backend **Healthy**、frontend、mcp-gateway。
+- `/readyz` 全绿：`xdr_connected: true`（容器内证书指纹 PIN + AKSK 签名双重校验访问真实平台）、
+  `scenario_count: 8`（真实告警）、`knowledge_chunks: 24238`（Chroma 索引容器内正常加载）、
+  sqlite/worker/auth/onnx/mcp 均 ready。
+- 前端 `http://127.0.0.1:5173` HTTP 200；MCP `http://127.0.0.1:8100/mcp` 三工具（alert_context/
+  knowledge_search/trace_summary）正常暴露（`check_mcp.py` 的 alert_call_error 是脚本写死 Mock 场景 ID
+  在 platform 模式的预期行为）。
+- 容器内真实告警研判冒烟通过：WebShell 告警 → 2 条 network_flow 证据（access_label=platform）→
+  确定性判定 needs_review。
+- **证书方案**：深信服平台证书为自签名 CA:FALSE + 无 SAN（OpenSSL 无法作信任锚，错误码 20），
+  采用**证书指纹 PIN**（`adapters/platform_tls.py`）：每次请求前抓取服务器证书比对 SHA256 指纹，
+  不匹配即拒绝；`XDR_CA_BUNDLE` 在 compose 中覆盖为容器内 `/app/certs/` 路径。
+- **网络限制**：本机无法访问 Docker Hub/镜像加速器（仅平台地址与 PyPI 可达），正式 CI 环境不受影响；
+  本地重建镜像需用 `deploy/compose.local.yaml` 流程。
+
 ### P2：文档存在少量历史状态
 
 - `docs/ENVIRONMENT.md` 仍含“Docker 尚未安装”的早期记录，当前事实是已安装但交接时未启动。
