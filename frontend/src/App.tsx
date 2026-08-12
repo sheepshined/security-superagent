@@ -182,8 +182,11 @@ export default function App() {
     setJobProgress(0);
     setCurrentNode("queued");
     try {
+      // Platform mode: scenario_id IS the alert/incident external id. Mock
+      // mode maps the well-known scenario ids to synthetic alert ids.
+      const externalId = scenarioExternalIds[scenario.scenario_id] ?? scenario.scenario_id;
       const job = await submitTriage(
-        scenarioExternalIds[scenario.scenario_id],
+        externalId,
         analystQuery.trim()
       );
       let terminalStatus = "";
