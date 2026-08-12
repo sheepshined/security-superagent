@@ -12,6 +12,7 @@ services:
       - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/knowledge-index:/app/knowledge/index
       - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/knowledge-cache:/app/data/knowledge-cache
       - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/models:/app/data/models
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/certs:/app/certs:ro
     environment:
       PYTHONPATH: /app/backend
       FASTEMBED_CACHE_PATH: /app/data/models/fastembed
@@ -54,6 +55,7 @@ services:
       - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/runtime:/app/data/runtime
       - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/knowledge-index:/app/knowledge/index
       - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/models:/app/data/models
+      - ${SECURITY_SUPERAGENT_DATA_ROOT:-E:/tzb/security-superagent-data}/certs:/app/certs:ro
     environment:
       PYTHONPATH: /app/backend
       MCP_HOST: 0.0.0.0

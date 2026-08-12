@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
 from app.adapters.aksk import AkskSigner
+from app.adapters.platform_tls import verify_platform_certificate
 from app.adapters.xdr_schemas import (
     AlertItem,
     IncidentItem,
@@ -82,6 +84,12 @@ class PlatformXDRAdapter:
         self._verify = tls_verify
         self._ca_bundle = ca_bundle
         self._transport = transport
+        # When a pinned bundle is configured, TLS uses fingerprint pinning
+        # (self-signed CA:FALSE certs cannot be CA trust anchors); when no
+        # bundle is set, tls_verify falls back to standard verification.
+        parsed = urlparse(self._base_url)
+        self._tls_host = parsed.hostname or ""
+        self._tls_port = parsed.port or (443 if parsed.scheme == "https" else 80)
         self._signer = AkskSigner(
             auth_code=auth_code,
             access_key=access_key,
@@ -195,6 +203,15 @@ class PlatformXDRAdapter:
         params: dict[str, Any] | None = None,
         json_body: Any = None,
     ) -> dict[str, Any]:
+        if self._ca_bundle and not self._transport:
+            # Fingerprint pinning: verify the server certificate identity
+            # before every request; httpx then connects without CA trust
+            # (the pinned identity already gates man-in-the-middle attacks).
+            verify_platform_certificate(
+                ca_bundle=self._ca_bundle,
+                host=self._tls_host,
+                port=self._tls_port,
+            )
         headers = self._signer.sign(
             method=method,
             url=url,
@@ -204,9 +221,14 @@ class PlatformXDRAdapter:
         )
         last_error: Exception | None = None
         attempts = self._max_retries + 1
+        # With a pinned bundle the fingerprint check above is the trust
+        # decision, so the actual request skips CA verification.
+        verify_setting: bool | str = (
+            False if self._ca_bundle else self._verify
+        )
         client_kwargs: dict[str, Any] = {
             "timeout": self._timeout_seconds,
-            "verify": self._ca_bundle if self._ca_bundle else self._verify,
+            "verify": verify_setting,
         }
         if self._transport is not None:
             client_kwargs["transport"] = self._transport

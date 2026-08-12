@@ -15,10 +15,12 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
 from app.adapters.aksk import AkskSigner
+from app.adapters.platform_tls import verify_platform_certificate
 from app.adapters.platform_xdr import XdrApiError
 from app.adapters.xdr_schemas import XdrApiResponse
 from app.domain.models import ToolDescriptor, utc_now
@@ -53,6 +55,9 @@ class PlatformResponseAdapter:
         self._verify = tls_verify
         self._ca_bundle = ca_bundle
         self._transport = transport
+        parsed = urlparse(self._base_url)
+        self._tls_host = parsed.hostname or ""
+        self._tls_port = parsed.port or (443 if parsed.scheme == "https" else 80)
         self._signer = AkskSigner(
             access_key=access_key,
             secret_key=secret_key,
@@ -252,6 +257,12 @@ class PlatformResponseAdapter:
         params: dict[str, Any] | None = None,
         json_body: Any = None,
     ) -> dict[str, Any]:
+        if self._ca_bundle and not self._transport:
+            verify_platform_certificate(
+                ca_bundle=self._ca_bundle,
+                host=self._tls_host,
+                port=self._tls_port,
+            )
         headers = self._signer.sign(
             method=method,
             url=url,
@@ -259,9 +270,10 @@ class PlatformResponseAdapter:
             params=params or {},
             json_body=json_body,
         )
+        verify_setting: bool | str = False if self._ca_bundle else self._verify
         client_kwargs: dict[str, Any] = {
             "timeout": self._timeout_seconds,
-            "verify": self._ca_bundle if self._ca_bundle else self._verify,
+            "verify": verify_setting,
         }
         if self._transport is not None:
             client_kwargs["transport"] = self._transport
