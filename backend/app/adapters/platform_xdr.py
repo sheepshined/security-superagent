@@ -118,7 +118,22 @@ class PlatformXDRAdapter:
 
     def get_evidence(self, alert: NormalizedAlert) -> list[Evidence]:
         proof = self._fetch_proof(alert.external_id)
-        return to_evidence(proof, ALERT_SOURCE, alert)
+        evidence = to_evidence(proof, ALERT_SOURCE, alert)
+        if self._data_source == "incidents" and not any(
+            item.type != "telemetry_gap" for item in evidence
+        ):
+            # Incidents carry no proof of their own on the platform; the
+            # evidence lives on the aggregated alerts (alertIds). Aggregate
+            # the linked alert proofs so incident triage is evidence-driven.
+            items = self._list_alerts(page=1, page_size=5, uu_ids=[alert.external_id])
+            if items:
+                for linked_id in items[0].alertIds or []:
+                    linked_proof = self._fetch_proof(
+                        linked_id,
+                        data_source="alerts",
+                    )
+                    evidence.extend(to_evidence(linked_proof, ALERT_SOURCE, alert))
+        return evidence
 
     # -- platform calls ------------------------------------------------------
 
@@ -143,10 +158,11 @@ class PlatformXDRAdapter:
         model = IncidentItem if self._data_source == "incidents" else AlertItem
         return [model.model_validate(item) for item in items]
 
-    def _fetch_proof(self, external_id: str) -> ProofData:
+    def _fetch_proof(self, external_id: str, data_source: str | None = None) -> ProofData:
+        prefix = data_source or self._data_source
         body = self._signed_request(
             "GET",
-            f"{self._base_url}{API_PREFIX}/{self._data_source}/{external_id}/proof",
+            f"{self._base_url}{API_PREFIX}/{prefix}/{external_id}/proof",
         )
         response = XdrApiResponse.model_validate(body)
         self._ensure_success(response)

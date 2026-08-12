@@ -257,6 +257,62 @@ def test_incidents_data_source_uses_incident_endpoints() -> None:
     assert "/api/xdr/v1/incidents/list" in captured["url"]
 
 
+INCIDENT_SAMPLE = {
+    "uuId": "incident-xyz",
+    "name": "主机存在SQL注入横向行为",
+    "incidentSeverity": 3,
+    "startTime": 1681142400,
+    "hostIp": "10.67.201.61",
+    "riskTag": ["SQL注入"],
+    "alertIds": ["alert-linked-1"],
+    "description": "内网横向攻击",
+}
+
+
+def test_incident_severity_maps_enum() -> None:
+    from app.adapters.xdr_schemas import map_incident_severity
+
+    assert map_incident_severity(None) == Severity.LOW
+    assert map_incident_severity(0) == Severity.LOW
+    assert map_incident_severity(1) == Severity.LOW
+    assert map_incident_severity(2) == Severity.MEDIUM
+    assert map_incident_severity(3) == Severity.HIGH
+    assert map_incident_severity(4) == Severity.CRITICAL
+
+
+def test_incident_get_alert_uses_incident_fields() -> None:
+    adapter = _adapter(
+        lambda request: httpx.Response(200, json=_alert_list_response([INCIDENT_SAMPLE])),
+        data_source="incidents",
+    )
+    alert = adapter.get_alert(AlertRef(source="sangfor-xdr", external_id="incident-xyz"))
+    assert alert.severity == Severity.HIGH
+    assert alert.occurred_at.year == 2023
+    assert "SQL注入" in alert.labels
+
+
+def test_incident_evidence_aggregates_linked_alerts() -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        if "incidents/list" in str(request.url):
+            return httpx.Response(200, json=_alert_list_response([INCIDENT_SAMPLE]))
+        if "/alerts/alert-linked-1/proof" in str(request.url):
+            return httpx.Response(
+                200,
+                json=_proof_response("http", {"url": "http://x/y.jsp"}),
+            )
+        # incident's own proof is empty
+        return httpx.Response(200, json={"code": "Success", "message": "ok", "data": {}})
+
+    adapter = _adapter(handler, data_source="incidents")
+    alert = adapter.get_alert(AlertRef(source="sangfor-xdr", external_id="incident-xyz"))
+    evidence = adapter.get_evidence(alert)
+    assert any(item.type == "network_flow" for item in evidence)
+    assert any("/alerts/alert-linked-1/proof" in url for url in calls)
+
+
 def test_severity_mapping_boundaries() -> None:
     assert map_severity(None) == Severity.LOW
     assert map_severity(10) == Severity.LOW

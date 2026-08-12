@@ -66,7 +66,20 @@ class AlertItem(BaseModel):
 
 
 class IncidentItem(AlertItem):
-    """Incidents/list shares the alert shape; incidents add no required fields."""
+    """Incidents/list item fields.
+
+    Verified against XDR 2.0.20: incidents use ``incidentSeverity`` (0-4
+    enum), ``startTime``/``endTime`` timestamps, and carry ``alertIds``
+    linking the aggregated alerts whose proofs form the incident evidence.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    incidentSeverity: int | None = None
+    alertIds: list[str] | None = None
+    riskTag: list[str] | None = None
+    startTime: int | None = None
+    endTime: int | None = None
 
 
 class ProofData(BaseModel):
@@ -96,7 +109,7 @@ def as_list(value: str | list[str] | None) -> list[str]:
 
 
 def map_severity(value: int | None) -> Severity:
-    """Map platform 0-100 severity to the domain enum.
+    """Map platform alert 0-100 severity to the domain enum.
 
     Platform buckets: (0,10] info, (10,30] low, (30,50] medium,
     (50,70] high, (70,100] critical.
@@ -106,6 +119,20 @@ def map_severity(value: int | None) -> Severity:
     if value <= 50:
         return Severity.MEDIUM
     if value <= 70:
+        return Severity.HIGH
+    return Severity.CRITICAL
+
+
+def map_incident_severity(value: int | None) -> Severity:
+    """Map platform incident 0-4 severity enum to the domain enum.
+
+    Platform buckets: 0 info, 1 low, 2 medium, 3 high, 4 critical.
+    """
+    if value is None or value <= 1:
+        return Severity.LOW
+    if value == 2:
+        return Severity.MEDIUM
+    if value == 3:
         return Severity.HIGH
     return Severity.CRITICAL
 
@@ -153,6 +180,9 @@ def _labels(item: AlertItem) -> list[str]:
     ):
         if field and field not in labels:
             labels.append(field)
+    for tag in getattr(item, "riskTag", None) or []:
+        if tag and tag not in labels:
+            labels.append(tag)
     if item.attackState is not None:
         labels.append(f"attack_state_{item.attackState}")
     threat_defines = (
@@ -171,13 +201,21 @@ def to_normalized_alert(
 ) -> NormalizedAlert:
     """Map a platform alert/incident item to the domain NormalizedAlert."""
     external_id = item.uuId or f"{external_prefix}_unknown"
-    occurred = ts_to_dt(item.lastTime or item.firstTime)
+    is_incident = isinstance(item, IncidentItem)
+    if is_incident and item.startTime is not None:
+        occurred = ts_to_dt(item.startTime)
+    else:
+        occurred = ts_to_dt(item.lastTime or item.firstTime)
+    if is_incident:
+        severity = map_incident_severity(item.incidentSeverity)
+    else:
+        severity = map_severity(item.severity)
     return NormalizedAlert(
         alert_id=f"xdr_{external_prefix}_{external_id}",
         source=source,
         external_id=external_id,
         title=item.name or "未命名告警",
-        severity=map_severity(item.severity),
+        severity=severity,
         occurred_at=occurred,
         entities=_entities(item),
         indicators=_indicators(item),
