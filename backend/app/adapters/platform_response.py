@@ -5,6 +5,10 @@ OpenAPI.  The action service relies on the returned keys ``passed``,
 ``status == "succeeded"``, ``verified`` and ``rolled_back``; this adapter
 keeps those contracts while mapping domain tools to platform endpoints.
 
+All block calls use the verified calling convention of XDR 2.0.20:
+gateway ``/api/xdr/v1/`` and POST + JSON body (the eolink document marks
+them GET + query params, but the platform rejects GET with 405).
+
 Platform gap: the OpenAPI list exposes no "create host isolation" endpoint
 and no account-disable endpoint, so ``edr.isolate_host`` and
 ``iam.disable_account`` fail closed with ``not_supported``.
@@ -21,7 +25,7 @@ import httpx
 
 from app.adapters.aksk import AkskSigner
 from app.adapters.platform_tls import verify_platform_certificate
-from app.adapters.platform_xdr import XdrApiError
+from app.adapters.platform_xdr import API_PREFIX, XdrApiError
 from app.adapters.xdr_schemas import XdrApiResponse
 from app.domain.models import ToolDescriptor, utc_now
 
@@ -111,9 +115,9 @@ class PlatformResponseAdapter:
                 "verified_at": utc_now().isoformat(),
             }
         body = self._signed_request(
-            "GET",
-            f"{self._base_url}/api/v1.0/openapi/responses/blockiprule/detail",
-            params={"ids": json.dumps([rule_id])},
+            "POST",
+            f"{self._base_url}{API_PREFIX}/responses/blockiprule/detail",
+            json_body={"ids": [rule_id]},
         )
         response = XdrApiResponse.model_validate(body)
         if response.code and response.code != "Success":
@@ -148,17 +152,40 @@ class PlatformResponseAdapter:
                 "rolled_back_at": utc_now().isoformat(),
             }
         body = self._signed_request(
-            "GET",
-            f"{self._base_url}/api/v1.0/openapi/responses/blockiprule/unblock",
-            params={"ids": json.dumps([rule_id])},
+            "POST",
+            f"{self._base_url}{API_PREFIX}/responses/blockiprule/unblock",
+            json_body={"ids": [rule_id]},
         )
         response = XdrApiResponse.model_validate(body)
         data = response.data if isinstance(response.data, dict) else {}
         success = int(data.get("success", 0) or 0)
+        rolled_back = success >= 1
+        if not rolled_back:
+            # The platform answers code=Success with success=0 when the
+            # record is already gone ("封禁记录不存在").  Treat that as
+            # rolled back only when detail confirms the rule no longer
+            # blocks, so a still-active rule can never be misreported.
+            check = self._signed_request(
+                "POST",
+                f"{self._base_url}{API_PREFIX}/responses/blockiprule/detail",
+                json_body={"ids": [rule_id]},
+            )
+            check_response = XdrApiResponse.model_validate(check)
+            check_data = (
+                check_response.data if isinstance(check_response.data, dict) else {}
+            )
+            items = check_data.get("item")
+            if isinstance(items, list):
+                rolled_back = not items or all(
+                    isinstance(item, dict) and item.get("status") == "unblocked"
+                    for item in items
+                )
+            elif not items:
+                rolled_back = True
         return {
             "adapter": self.name,
             "mode": "platform",
-            "rolled_back": success >= 1,
+            "rolled_back": rolled_back,
             "operation_id": execution.get("operation_id"),
             "rule_id": rule_id,
             "success_count": success,
@@ -181,26 +208,28 @@ class PlatformResponseAdapter:
                 "executed_at": utc_now().isoformat(),
             }
         block_type = self._block_type(target)
+        # Platform convention (verified live): view is a list of match
+        # values, mode is "in", and everything travels in a JSON body.
         body = self._signed_request(
             "POST",
-            f"{self._base_url}/api/v1.0/openapi/responses/blockiprule/network",
+            f"{self._base_url}{API_PREFIX}/responses/blockiprule/network",
             json_body={
                 "name": scope.get("name") or f"superagent-block-{target[:32]}",
                 "reason": plan.get("reason", "AI 研判后的人工审批动作"),
                 "timeType": scope.get("timeType", "temporary"),
                 "timeValue": scope.get("timeValue", 30),
                 "timeUnit": scope.get("timeUnit", "m"),
-                "blockIpRule": {"type": block_type, "view": target},
+                "blockIpRule": {"type": block_type, "mode": "in", "view": [target]},
                 "devices": devices,
             },
         )
         response = XdrApiResponse.model_validate(body)
-        if response.code and response.code != "Success":
+        if response.code and response.code not in {"Success", "Part Success"}:
             raise XdrApiError(
                 f"platform returned code={response.code}: {response.message}"
             )
         data = response.data if isinstance(response.data, dict) else {}
-        ids = data.get("ids")
+        ids = data.get("ids") or data.get("successIds")
         rule_id = ids[0] if isinstance(ids, list) and ids else str(ids or "")
         if not rule_id:
             raise XdrApiError("platform block response did not include a rule id")
@@ -221,8 +250,9 @@ class PlatformResponseAdapter:
             "mode": "platform",
             "status": "failed",
             "error": (
-                f"not_supported: 平台 OpenAPI 无 {tool_name} 对应接口；"
-                "已向平台方确认新增隔离/账号禁用接口，当前安全降级为失败。"
+                f"not_supported: 平台 OpenAPI 未开放 {tool_name} 对应接口；"
+                "已列入向官方申请/确认清单（隔离新增接口、账号处置接口），"
+                "当前安全降级为失败。"
             ),
             "tool_name": tool_name,
             "target": target,
@@ -263,12 +293,21 @@ class PlatformResponseAdapter:
                 host=self._tls_host,
                 port=self._tls_port,
             )
+        # Serialize the body once and send the exact bytes we signed: the
+        # platform gateway hashes the received payload byte-multiset, so
+        # non-ASCII content must be ASCII-escaped identically on both sides
+        # (verified live: escaped JSON signs OK, raw UTF-8 gets 401).
+        payload_data: str | None = None
+        body_bytes: bytes | None = None
+        if json_body is not None:
+            payload_data = json.dumps(json_body, ensure_ascii=True)
+            body_bytes = payload_data.encode("utf-8")
         headers = self._signer.sign(
             method=method,
             url=url,
             headers={"content-type": "application/json"},
             params=params or {},
-            json_body=json_body,
+            data=payload_data,
         )
         verify_setting: bool | str = False if self._ca_bundle else self._verify
         client_kwargs: dict[str, Any] = {
@@ -283,7 +322,7 @@ class PlatformResponseAdapter:
                 url,
                 headers=headers,
                 params=params or None,
-                json=json_body,
+                content=body_bytes,
             )
             response.raise_for_status()
             return response.json()

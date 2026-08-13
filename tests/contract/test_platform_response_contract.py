@@ -5,6 +5,8 @@ Locks the four-phase response contract the ActionService depends on
 and the fail-closed behaviour for tools the platform does not expose.
 """
 
+import json
+
 import httpx
 import pytest
 from app.adapters.platform_response import PlatformResponseAdapter
@@ -88,7 +90,7 @@ def test_execute_block_posts_rule_and_returns_succeeded() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         captured["method"] = request.method
         captured["url"] = str(request.url)
-        captured["json"] = request.content
+        captured["json"] = json.loads(request.content)
         return httpx.Response(
             200, json={"code": "Success", "message": "ok", "data": {"ids": ["rule-42"]}}
         )
@@ -96,13 +98,20 @@ def test_execute_block_posts_rule_and_returns_succeeded() -> None:
     adapter = _adapter(handler)
     outcome = adapter.execute(
         BLOCK_DESCRIPTOR,
-        _plan("192.168.1.10", devices=[{"devId": "d1", "devType": "NTA"}]),
+        _plan("192.168.1.10", devices=[{"devId": "af", "devType": "AF"}]),
     )
     assert outcome["status"] == "succeeded"
     assert outcome["rule_id"] == "rule-42"
     assert outcome["operation_id"] == "block_rule-42"
     assert captured["method"] == "POST"
-    assert "/api/v1.0/openapi/responses/blockiprule/network" in captured["url"]
+    assert "/api/xdr/v1/responses/blockiprule/network" in captured["url"]
+    # Verified platform convention: match value is a list, mode is "in".
+    assert captured["json"]["blockIpRule"] == {
+        "type": "SRC_IP",
+        "mode": "in",
+        "view": ["192.168.1.10"],
+    }
+    assert captured["json"]["devices"] == [{"devId": "af", "devType": "AF"}]
 
 
 def test_execute_block_requires_devices() -> None:
@@ -120,8 +129,13 @@ def test_execute_unsupported_tool_fails_closed() -> None:
 
 
 def test_verify_checks_rule_status() -> None:
-    adapter = _adapter(
-        lambda request: httpx.Response(
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["url"] = str(request.url)
+        captured["json"] = json.loads(request.content)
+        return httpx.Response(
             200,
             json={
                 "code": "Success",
@@ -129,7 +143,8 @@ def test_verify_checks_rule_status() -> None:
                 "data": {"item": [{"id": "rule-42", "status": "block success"}]},
             },
         )
-    )
+
+    adapter = _adapter(handler)
     outcome = adapter.verify(
         BLOCK_DESCRIPTOR,
         _plan("192.168.1.10"),
@@ -137,6 +152,9 @@ def test_verify_checks_rule_status() -> None:
     )
     assert outcome["verified"] is True
     assert outcome["observed_status"] == "block success"
+    assert captured["method"] == "POST"
+    assert "/api/xdr/v1/responses/blockiprule/detail" in captured["url"]
+    assert captured["json"] == {"ids": ["rule-42"]}
 
 
 def test_verify_missing_rule_id_returns_not_verified() -> None:
@@ -147,11 +165,17 @@ def test_verify_missing_rule_id_returns_not_verified() -> None:
 
 
 def test_rollback_unblocks_rule() -> None:
-    adapter = _adapter(
-        lambda request: httpx.Response(
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["url"] = str(request.url)
+        captured["json"] = json.loads(request.content)
+        return httpx.Response(
             200, json={"code": "Success", "message": "ok", "data": {"success": 1}}
         )
-    )
+
+    adapter = _adapter(handler)
     outcome = adapter.rollback(
         BLOCK_DESCRIPTOR,
         _plan("192.168.1.10"),
@@ -159,6 +183,79 @@ def test_rollback_unblocks_rule() -> None:
     )
     assert outcome["rolled_back"] is True
     assert outcome["success_count"] == 1
+    assert captured["method"] == "POST"
+    assert "/api/xdr/v1/responses/blockiprule/unblock" in captured["url"]
+    assert captured["json"] == {"ids": ["rule-42"]}
+
+
+def test_rollback_already_gone_rule_confirms_via_detail() -> None:
+    """Real platform contract: unblock answers Success with success=0 and
+    errorMessage when the record is already gone; detail then returns no
+    item, so the rule is effectively rolled back."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/unblock" in str(request.url):
+            return httpx.Response(
+                200,
+                json={
+                    "code": "Success",
+                    "message": "成功",
+                    "data": {
+                        "success": 0,
+                        "fail": 0,
+                        "errorMessage": "封禁记录不存在",
+                        "successIds": None,
+                        "failedIds": None,
+                    },
+                },
+            )
+        if "/detail" in str(request.url):
+            return httpx.Response(
+                200, json={"code": "Success", "message": "OK", "data": {"item": []}}
+            )
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    adapter = _adapter(handler)
+    outcome = adapter.rollback(
+        BLOCK_DESCRIPTOR,
+        _plan("192.168.1.10"),
+        {"rule_id": "rule-42", "operation_id": "block_rule-42"},
+    )
+    assert outcome["rolled_back"] is True
+    assert outcome["success_count"] == 0
+
+
+def test_rollback_still_active_rule_is_not_reported_as_rolled_back() -> None:
+    """success=0 with a still-blocking rule in detail must stay False."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/unblock" in str(request.url):
+            return httpx.Response(
+                200,
+                json={
+                    "code": "Success",
+                    "message": "成功",
+                    "data": {"success": 0, "errorMessage": "设备未响应"},
+                },
+            )
+        if "/detail" in str(request.url):
+            return httpx.Response(
+                200,
+                json={
+                    "code": "Success",
+                    "message": "OK",
+                    "data": {"item": [{"id": "rule-42", "status": "block success"}]},
+                },
+            )
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    adapter = _adapter(handler)
+    outcome = adapter.rollback(
+        BLOCK_DESCRIPTOR,
+        _plan("192.168.1.10"),
+        {"rule_id": "rule-42", "operation_id": "block_rule-42"},
+    )
+    assert outcome["rolled_back"] is False
 
 
 def test_rollback_missing_rule_id_reports_failure() -> None:

@@ -320,3 +320,66 @@ def test_severity_mapping_boundaries() -> None:
     assert map_severity(50) == Severity.MEDIUM
     assert map_severity(70) == Severity.HIGH
     assert map_severity(100) == Severity.CRITICAL
+
+
+def _alert_items(count: int, start: int = 0) -> list[dict]:
+    return [
+        {**SAMPLE_ALERT, "uuId": f"alert-page-{i}", "name": f"告警 {i}"}
+        for i in range(start, start + count)
+    ]
+
+
+def _paged_handler(total: int | None, pages: dict[int, list[dict]]) -> object:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        page = body["page"]
+        calls.append(page)
+        data: dict = {"page": page, "pageSize": 5, "item": pages.get(page, [])}
+        if total is not None:
+            data["total"] = total
+        return httpx.Response(
+            200, json={"code": "Success", "message": "ok", "data": data}
+        )
+
+    handler.calls = calls  # type: ignore[attr-defined]
+    return handler
+
+
+def test_list_scenarios_paginates_until_total() -> None:
+    """list_scenarios must consume the envelope total and fetch every page."""
+    total = 12
+    all_items = _alert_items(total)
+    pages = {
+        1: all_items[0:5],
+        2: all_items[5:10],
+        3: all_items[10:12],
+    }
+    handler = _paged_handler(total, pages)
+    adapter = _adapter(handler, default_page_size=5)
+    scenarios = adapter.list_scenarios()
+    assert len(scenarios) == total
+    assert handler.calls == [1, 2, 3]  # type: ignore[attr-defined]
+
+
+def test_list_scenarios_stops_on_short_page_without_total() -> None:
+    """Without a total field, a short page ends the walk (no truncation)."""
+    pages = {1: _alert_items(5), 2: _alert_items(3, start=5)}
+    handler = _paged_handler(None, pages)
+    adapter = _adapter(handler, default_page_size=5)
+    scenarios = adapter.list_scenarios()
+    assert len(scenarios) == 8
+    assert handler.calls == [1, 2]  # type: ignore[attr-defined]
+
+
+def test_list_scenarios_dedupes_overlapping_pages() -> None:
+    """A boundary item repeated across pages must not duplicate a scenario."""
+    page1 = _alert_items(5)
+    page2 = [page1[-1], *_alert_items(4, start=5)]
+    handler = _paged_handler(9, {1: page1, 2: page2})
+    adapter = _adapter(handler, default_page_size=5)
+    scenarios = adapter.list_scenarios()
+    assert len(scenarios) == 9
+    assert len({item.scenario_id for item in scenarios}) == 9
+    assert handler.calls == [1, 2]  # type: ignore[attr-defined]

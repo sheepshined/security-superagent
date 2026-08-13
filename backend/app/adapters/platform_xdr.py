@@ -10,6 +10,7 @@ so the response adapter reports ``edr.isolate_host`` as not supported.
 
 from __future__ import annotations
 
+import json
 import time
 from typing import Any
 from urllib.parse import urlparse
@@ -103,7 +104,7 @@ class PlatformXDRAdapter:
     # -- XDRAdapter protocol -------------------------------------------------
 
     def list_scenarios(self) -> list[ScenarioSummary]:
-        payload = self._list_alerts(page=1, page_size=self._default_page_size)
+        payload = self._list_all_alerts()
         return [to_scenario_summary(item, ALERT_SOURCE) for item in payload]
 
     def get_alert(self, alert_ref: AlertRef) -> NormalizedAlert:
@@ -145,6 +146,48 @@ class PlatformXDRAdapter:
 
     # -- platform calls ------------------------------------------------------
 
+    def _list_all_alerts(self) -> list[AlertItem]:
+        """Fetch every page of the alerts/incidents list.
+
+        Consumes the envelope ``total`` and keeps paging until it is reached
+        or a short page arrives.  A page guard turns a misbehaving platform
+        into an explicit error instead of silent truncation.
+        """
+        page_size = self._default_page_size
+        collected: list[AlertItem] = []
+        seen: set[str] = set()
+        total: int | None = None
+        page = 1
+        # Hard guard only against a platform that never ends; the real
+        # platform always returns ``total`` (verified live), so this is
+        # never reached in practice.
+        max_pages = 10_000
+        while page <= max_pages:
+            items, page_total = self._list_alerts_page(page=page, page_size=page_size)
+            if total is None:
+                total = page_total
+            if not items:
+                break
+            for item in items:
+                key = item.uuId
+                if key and key in seen:
+                    continue
+                if key:
+                    seen.add(key)
+                collected.append(item)
+            if total is not None and len(collected) >= total:
+                break
+            if len(items) < page_size:
+                break
+            page += 1
+        else:  # no break: platform kept returning full pages past the guard
+            raise XdrApiError(
+                f"pagination exceeded {max_pages} pages without reaching "
+                "total; refusing to silently truncate",
+                retryable=False,
+            )
+        return collected
+
     def _list_alerts(
         self,
         *,
@@ -152,6 +195,18 @@ class PlatformXDRAdapter:
         page_size: int,
         uu_ids: list[str] | None = None,
     ) -> list[AlertItem]:
+        items, _total = self._list_alerts_page(
+            page=page, page_size=page_size, uu_ids=uu_ids
+        )
+        return items
+
+    def _list_alerts_page(
+        self,
+        *,
+        page: int,
+        page_size: int,
+        uu_ids: list[str] | None = None,
+    ) -> tuple[list[AlertItem], int | None]:
         body_payload: dict[str, Any] = {"page": page, "pageSize": page_size}
         if uu_ids:
             body_payload["uuIds"] = uu_ids
@@ -163,8 +218,9 @@ class PlatformXDRAdapter:
         response = XdrApiResponse.model_validate(body)
         self._ensure_success(response)
         items = self._extract_items(response)
+        total = self._extract_total(response)
         model = IncidentItem if self._data_source == "incidents" else AlertItem
-        return [model.model_validate(item) for item in items]
+        return [model.model_validate(item) for item in items], total
 
     def _fetch_proof(self, external_id: str, data_source: str | None = None) -> ProofData:
         prefix = data_source or self._data_source
@@ -186,6 +242,14 @@ class PlatformXDRAdapter:
             if isinstance(items, list):
                 return [item for item in items if isinstance(item, dict)]
         return []
+
+    @staticmethod
+    def _extract_total(response: XdrApiResponse) -> int | None:
+        if isinstance(response.data, dict):
+            value = response.data.get("total")
+            if isinstance(value, int):
+                return value
+        return None
 
     @staticmethod
     def _ensure_success(response: XdrApiResponse) -> None:
@@ -212,12 +276,21 @@ class PlatformXDRAdapter:
                 host=self._tls_host,
                 port=self._tls_port,
             )
+        # Serialize the body once and send the exact bytes we signed.  The
+        # platform gateway hashes the received payload byte-multiset, so any
+        # non-ASCII content must be ASCII-escaped identically on both sides
+        # (verified live: escaped JSON signs OK, raw UTF-8 gets 401).
+        payload_data: str | None = None
+        body_bytes: bytes | None = None
+        if json_body is not None:
+            payload_data = json.dumps(json_body, ensure_ascii=True)
+            body_bytes = payload_data.encode("utf-8")
         headers = self._signer.sign(
             method=method,
             url=url,
             headers={"content-type": "application/json"},
             params=params or {},
-            json_body=json_body,
+            data=payload_data,
         )
         last_error: Exception | None = None
         attempts = self._max_retries + 1
@@ -240,7 +313,7 @@ class PlatformXDRAdapter:
                         url,
                         headers=headers,
                         params=params or None,
-                        json=json_body,
+                        content=body_bytes,
                     )
                     if response.status_code in {429, 500, 502, 503, 504} and attempt < attempts:
                         last_error = XdrApiError(
