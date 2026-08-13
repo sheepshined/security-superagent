@@ -372,3 +372,126 @@ def test_sse_stream_contains_auditable_node_and_terminal_events() -> None:
     assert "event: agent_step_completed" in body
     assert "event: policy_finalized" in body
     assert "event: job_status_changed" in body
+
+
+EXTERNAL_TEST_KEY = "test-external-tool-key-123"
+
+
+class TestExternalToolApi:
+    """X-API-Key channel used by external tool platforms (AI 共创 HTTP 工具)."""
+
+    def setup_method(self) -> None:
+        app.dependency_overrides[get_settings] = lambda: Settings(
+            _env_file=None,
+            langsmith_tracing=False,
+            external_api_key=EXTERNAL_TEST_KEY,
+        )
+
+    def teardown_method(self) -> None:
+        app.dependency_overrides[get_settings] = lambda: test_settings
+
+    @staticmethod
+    def _anonymous() -> TestClient:
+        # Plain client without lifespan: no session cookies, worker untouched.
+        return TestClient(app)
+
+    def test_openapi_external_schema_is_read_only_subset(self) -> None:
+        response = client.get("/openapi-external.json")
+        assert response.status_code == 200
+        schema = response.json()
+        paths = schema["paths"]
+        assert "/api/v1/scenarios" in paths
+        assert "/api/v1/triage/jobs" in paths
+        assert "/api/v1/triage/investigate" in paths
+        assert "/api/v1/actions" not in paths
+        assert "/api/v1/auth/login" not in paths
+        assert schema["components"]["securitySchemes"]["XApiKey"]["in"] == "header"
+        op = paths["/api/v1/triage/investigate"]["get"]
+        assert any(
+            p["name"] == "alert_uuid" and p["in"] == "query" and p.get("required")
+            for p in op.get("parameters", [])
+        )
+        assert "requestBody" not in op
+
+    def test_anonymous_requires_api_key(self) -> None:
+        anonymous = self._anonymous()
+        try:
+            assert anonymous.get("/api/v1/scenarios").status_code == 401
+        finally:
+            anonymous.close()
+
+    def test_wrong_api_key_rejected(self) -> None:
+        anonymous = self._anonymous()
+        try:
+            response = anonymous.get(
+                "/api/v1/scenarios", headers={"X-API-Key": "wrong-key"}
+            )
+            assert response.status_code == 401
+        finally:
+            anonymous.close()
+
+    def test_api_key_grants_read_access(self) -> None:
+        anonymous = self._anonymous()
+        try:
+            response = anonymous.get(
+                "/api/v1/scenarios", headers={"X-API-Key": EXTERNAL_TEST_KEY}
+            )
+            assert response.status_code == 200
+            assert isinstance(response.json(), list)
+        finally:
+            anonymous.close()
+
+    def test_bearer_token_grants_read_access(self) -> None:
+        anonymous = self._anonymous()
+        try:
+            response = anonymous.get(
+                "/api/v1/scenarios",
+                headers={"Authorization": f"Bearer {EXTERNAL_TEST_KEY}"},
+            )
+            assert response.status_code == 200
+        finally:
+            anonymous.close()
+
+    def test_investigate_with_api_key(self) -> None:
+        response = client.get(
+            "/api/v1/triage/investigate",
+            params={"alert_uuid": "A-TRI-001"},
+            headers={"X-API-Key": EXTERNAL_TEST_KEY},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["job_id"]
+        assert "verdict" in body
+        assert isinstance(body["evidence"], list)
+
+    def test_investigate_unknown_alert_404(self) -> None:
+        response = client.get(
+            "/api/v1/triage/investigate",
+            params={"alert_uuid": "A-NOPE-999"},
+            headers={"X-API-Key": EXTERNAL_TEST_KEY},
+        )
+        assert response.status_code == 404
+
+    def test_investigate_accepts_lenient_optional_query_params(self) -> None:
+        response = client.get(
+            "/api/v1/triage/investigate",
+            params={
+                "alert_uuid": "A-TRI-001",
+                "analyst_query": "",
+                "time_window_minutes": "0",
+            },
+            headers={"X-API-Key": EXTERNAL_TEST_KEY},
+        )
+        assert response.status_code == 200
+
+    def test_investigate_session_requires_csrf(self) -> None:
+        denied = client.get(
+            "/api/v1/triage/investigate", params={"alert_uuid": "A-TRI-001"}
+        )
+        assert denied.status_code == 403
+        allowed = client.get(
+            "/api/v1/triage/investigate",
+            params={"alert_uuid": "A-TRI-001"},
+            headers=CSRF_HEADERS,
+        )
+        assert allowed.status_code == 200

@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     app_host: str = "127.0.0.1"
     app_port: int = Field(default=8000, ge=1, le=65535)
     app_log_level: str = "INFO"
+    # Optional: injected as OpenAPI "servers" so external tool platforms
+    # (GPTs-style OpenAPI import) resolve the correct base URL.
+    public_base_url: str = ""
 
     model_provider: str = "mock"
     deepseek_api_key: str = ""
@@ -57,6 +60,9 @@ class Settings(BaseSettings):
     mcp_port: int = Field(default=8100, ge=1, le=65535)
 
     auth_required: bool = True
+    # Shared secret for external tool platforms (e.g. 平台 AI 共创 HTTP 工具)
+    # presented as X-API-Key header or Authorization: Bearer. Empty disables the channel.
+    external_api_key: str = ""
     bootstrap_admin_username: str = ""
     bootstrap_admin_password: str = ""
     session_hours: int = Field(default=8, ge=1, le=24)

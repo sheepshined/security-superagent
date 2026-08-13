@@ -1,3 +1,4 @@
+import hmac
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
@@ -155,11 +156,46 @@ def _development_user() -> UserView:
     )
 
 
+def _external_tool_user() -> UserView:
+    now = utc_now()
+    return UserView(
+        user_id="usr_external_tool",
+        username="external-tool",
+        role=UserRole.ANALYST,
+        is_active=True,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def is_external_tool_request(request: Request, settings: Settings) -> bool:
+    """True when the request carries a valid external-tool API key.
+
+    Accepted as ``X-API-Key`` header or ``Authorization: Bearer``. Returns
+    False whenever the channel is unconfigured or the key does not match.
+    """
+    expected = settings.external_api_key
+    if not expected:
+        return False
+    provided = request.headers.get("X-API-Key")
+    if not provided:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            provided = auth_header[len("Bearer ") :]
+    return bool(provided) and hmac.compare_digest(provided, expected)
+
+
+SettingsDependency = Annotated[Settings, Depends(get_settings)]
+
+
 def require_authenticated(
     request: Request,
     auth: AuthServiceDependency,
+    settings: SettingsDependency,
 ) -> UserView:
-    if not get_settings().auth_required:
+    if is_external_tool_request(request, settings):
+        return _external_tool_user()
+    if not settings.auth_required:
         return _development_user()
     try:
         return auth.authenticate(request.cookies.get(SESSION_COOKIE))
@@ -182,6 +218,17 @@ def require_csrf(
         raise HTTPException(status_code=401, detail="authentication required") from exc
     except AuthorizationError as exc:
         raise HTTPException(status_code=403, detail="CSRF validation failed") from exc
+
+
+def require_external_tool_or_csrf(
+    request: Request,
+    auth: AuthServiceDependency,
+    settings: SettingsDependency,
+) -> UserView:
+    """CSRF gate that external tools (valid API key) may bypass."""
+    if is_external_tool_request(request, settings):
+        return _external_tool_user()
+    return require_csrf(request, auth)
 
 
 def require_admin(user: Annotated[UserView, Depends(require_authenticated)]) -> UserView:
